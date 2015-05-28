@@ -2,11 +2,12 @@ SwiftCoAP
 =====
 
 This project is an implementation of the "Constrained Application Protocol" (CoAP) in Swift for Clients and Servers (coming soon).
-This implementation provides the standard CoAP (including Caching) features along with the extensions
-The current version has besides the standard CoAP features the following additions:
+This implementation provides the standard CoAP (including Caching) features along with the extensions:
+
 * Observe
 * Block transfer (Block1 and Block2)
 
+A short manual is provided below.
 Feedback is highly appreciated!
 
 Getting Started

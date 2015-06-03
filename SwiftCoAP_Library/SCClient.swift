@@ -71,7 +71,7 @@ class SCClient: NSObject {
     
     var delegate: SCClientDelegate?
     var sendToken = true   //If true, a token with 4-8 Bytes is sent
-    var autoBlock1SZX: UInt? = 2    //If not nil, Block1 transfer will be used automatically when the payload size exceeds the value 2^(autoBlock1SZX +4)
+    var autoBlock1SZX: UInt? = 2    //If not nil, Block1 transfer will be used automatically when the payload size exceeds the value 2^(autoBlock1SZX +4). Valid Values: 0-6.
     var httpProxyingData: (hostName: String, port: UInt16)?     //If not nil, all message will be sent via http to the given proxy address
     var cachingActive = false   //Activates caching
     
@@ -116,7 +116,6 @@ class SCClient: NSObject {
             for cachedMessage in cachedMessagePairs.keys {
                 if cachedMessage.equalForCachingWithMessage(message) {
                     if cachedMessage.isFresh() {
-                        println("CACHED junge")
                         if message.options[SCOption.Observe.rawValue] == nil { cachedMessage.options[SCOption.Observe.rawValue] = nil }
                         delegate?.swiftCoapClient(self, didReceiveMessage: cachedMessagePairs[cachedMessage]!)
                         handleBlock2WithMessage(cachedMessagePairs[cachedMessage]!)
@@ -347,6 +346,7 @@ class SCClient: NSObject {
         }
     }
 }
+
 
 // MARK:
 // MARK: SC Client Extension

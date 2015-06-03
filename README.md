@@ -58,6 +58,21 @@ coapClient.sendCoAPMessage(m, hostName: "coap.me", port: 5683)
 * `cancelObserve()` Cancels observe directly, sending the previous message with an Observe-Option Value of 1. Only effective, if the previous message initiated a registration as observer with the respective server.
 * `closeTransmission()` Closes the transmission. It is recommended to call this method anytime you do not expect to receive a response any longer.
 
+##### HTTP-Proxying
+
+The class `SCClient` gives you the opportunity to send a message as HTTP via a proxy. Just add the following line after initating an `SCClient`object:
+```swift
+coapClient.httpProxyingData = ("localhost", 5683)
+```
+The Options of the CoAP-Message are sent in the HTTP-Header. It is required that the Proxy returns the CoAP-Type in the Header of HTTP-Response as well. The respective Header-Field is `COAP_TYPE`.
+The Request-URI has the following Format: `http://proxyHost:proxyPort/coapHost:coapPort`
+An Example: Sending your message to the CoAP-Server `coap.me` with the Port `5683` via a HTTP-Proxy located at `localhost:9292`, lets the SwiftCoAP library compose the follwoing Request-URI: `http://localhost:9292/coap.me:5683`
+
+Examples:
+=====
+Make sure to take a look at the examples, which show the library in action. Let me know if you have questions, or other issues.
+
+
 Used Libraries:
 =====
  This version uses the public domain licensed CocoaAsyncSocket library 

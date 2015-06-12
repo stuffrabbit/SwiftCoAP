@@ -199,7 +199,7 @@ enum SCCodeSample: Int {
 //MARK:
 //MARK: SC Content Format Enumeration
 
-enum SCContentFormat: Int {
+enum SCContentFormat: UInt {
     case Plain = 0
     case LinkFormat = 40
     case XML = 41
@@ -504,6 +504,7 @@ class SCMessage: NSObject {
             resultData.appendBytes(&payloadMarker, length: 1)
             resultData.appendData(payload!)
         }
+        println("Result TODATA: \(resultData)")
         return resultData
     }
     
@@ -657,5 +658,56 @@ class SCMessage: NSObject {
             }
         }
         return message
+    }
+    
+    func completeUriPath() -> String {
+        var finalPathString: String = ""
+        if let pathDataArray = options[SCOption.UriPath.rawValue] {
+            for var i = 0; i < pathDataArray.count; i++ {
+                if let pathString = NSString(data: pathDataArray[i], encoding: NSUTF8StringEncoding) {
+                    if  i > 0 { finalPathString += "/"}
+                    finalPathString += String(pathString)
+                }
+            }
+        }
+        return finalPathString
+    }
+    
+    func uriQueryDictionary() -> [String : String] {
+        var resultDict = [String : String]()
+        if let queryDataArray = options[SCOption.UriQuery.rawValue] {
+            for queryData in queryDataArray {
+                if let queryString = NSString(data: queryData, encoding: NSUTF8StringEncoding), splitArray = queryString.componentsSeparatedByString("=") as? [String] where splitArray.count == 2 {
+                    resultDict[splitArray.first!] = splitArray.last!
+                }
+            }
+        }
+        return resultDict
+    }
+    
+    static func getPathAndQueryDataArrayFromUriString(uriString: String) -> (pathDataArray: [NSData], queryDataArray: [NSData])? {
+        
+        func dataArrayFromString(string: String!, withSeparator separator: String) -> [NSData] {
+            var resultDataArray = [NSData]()
+            if string != nil {
+                let stringArray = string.componentsSeparatedByString(separator)
+                for subString in stringArray {
+                    if let data = subString.dataUsingEncoding(NSUTF8StringEncoding) {
+                        resultDataArray.append(data)
+                    }
+                }
+            }
+            return resultDataArray
+        }
+
+        let splitArray = uriString.componentsSeparatedByString("?")
+        
+        if splitArray.count <= 2 {
+            let resultPathDataArray = dataArrayFromString(splitArray.first, withSeparator: "/")
+            let resultQueryDataArray = splitArray.count == 2 ? dataArrayFromString(splitArray.last, withSeparator: "&") : []
+            
+            return (resultPathDataArray, resultQueryDataArray)
+        }
+        return nil
     }
 }

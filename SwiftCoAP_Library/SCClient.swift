@@ -347,6 +347,8 @@ class SCClient: NSObject {
 
 extension SCClient: GCDAsyncUdpSocketDelegate {
     func udpSocket(sock: GCDAsyncUdpSocket!, didReceiveData data: NSData!, fromAddress address: NSData!, withFilterContext filterContext: AnyObject!) {
+        println("Client received data: \(data)")
+        
         if let message = SCMessage.fromData(data) {
             //Invalidate Timer
             transmissionTimer?.invalidate()

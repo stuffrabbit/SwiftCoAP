@@ -127,7 +127,7 @@ enum SCOption: Int {
     }
     
     static func isNumberUnsafe(optionNo: Int) -> Bool {
-        return optionNo & 0b10 == 1
+        return optionNo & 0b10 == 0b10
     }
     
     func isUnsafe() -> Bool {
@@ -504,7 +504,6 @@ class SCMessage: NSObject {
             resultData.appendBytes(&payloadMarker, length: 1)
             resultData.appendData(payload!)
         }
-        println("Result TODATA: \(resultData)")
         return resultData
     }
     

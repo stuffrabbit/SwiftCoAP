@@ -92,7 +92,7 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
             case .Reset:
                 return
             case .Acknowledgement:
-                return //TODO hier Separate Messages aus dem Gedaechtnis schmeissen
+                return //TODO handle Separate Messagesjtus
             case .Confirmable:
                 resultType = .Acknowledgement
             default:
@@ -183,9 +183,7 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                 }
                 else {
                     respondMethodNotAllowed()
-                    return
                 }
- 
             }
             else {
                 var responseCode = SCCodeValue(classValue: 4, detailValue: 04)

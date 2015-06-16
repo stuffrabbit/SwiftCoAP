@@ -327,9 +327,10 @@ class SCMessage: NSObject {
     lazy var options = [Int: [NSData]]() //CoAP-Options. It is recommend to use the addOption(..) method to add a new option.
 
     
-    //The following properties are modified by SCClient. Modification has no effect and is therefore not recommended
+    //The following properties are modified by SCClient/SCServer. Modification has no effect and is therefore not recommended
     var hostName: String?
     var port: UInt16?
+    var addressData: NSData?
     
     var messageId: UInt16!
     var token: UInt64 = 0

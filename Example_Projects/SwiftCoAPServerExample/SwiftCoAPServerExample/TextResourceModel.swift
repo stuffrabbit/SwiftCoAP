@@ -8,11 +8,12 @@
 
 import UIKit
 
-class TextResourceModel: NSObject, SCResourceModel {
+class TextResourceModel: NSObject {
     
     //Individual Properties
     var myText: String
-    
+    weak var server: SCServer!
+
     //Protocol Properties
     let name: String
     let allowedRoutes: UInt = SCAllowedRoute.Get.rawValue | SCAllowedRoute.Post.rawValue
@@ -20,11 +21,30 @@ class TextResourceModel: NSObject, SCResourceModel {
     var maxAgeValue: UInt!
     var etag: NSData!
     
-    init(name: String, text: String) {
+    init(name: String, text: String, server: SCServer!) {
         self.name = name
         self.myText = text
+        self.server = server
     }
 
+    func delay(delay:Double, closure:()->()) {
+        dispatch_after(
+            dispatch_time(
+                DISPATCH_TIME_NOW,
+                Int64(delay * Double(NSEC_PER_SEC))
+            ),
+            dispatch_get_main_queue(), closure)
+    }
+}
+
+extension TextResourceModel: SCResourceModel {
+    func willHandleDataAsynchronouslyForGet(#queryDictionary: [String : String], options: [Int : [NSData]], originalMessage: SCMessage) -> Bool {
+        delay(1.0) {
+            self.server.didCompleteAsynchronousRequestForOriginalMessage(originalMessage, resource: self, values: (SCCodeValue(classValue: 2, detailValue: 05), self.myText.dataUsingEncoding(NSUTF8StringEncoding), SCContentFormat.Plain))
+        }
+        return true
+    }
+    
     func dataForGet(#queryDictionary: [String : String], options: [Int : [NSData]]) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!)? {
         return (SCCodeValue(classValue: 2, detailValue: 05), myText.dataUsingEncoding(NSUTF8StringEncoding), SCContentFormat.Plain)
     }
@@ -44,5 +64,4 @@ class TextResourceModel: NSObject, SCResourceModel {
     func dataForDelete(#queryDictionary: [String : String], options: [Int : [NSData]]) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!)? {
         return nil
     }
-
 }

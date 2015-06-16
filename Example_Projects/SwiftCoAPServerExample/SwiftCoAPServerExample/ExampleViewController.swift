@@ -17,8 +17,8 @@ class ExampleViewController: UIViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        myServer?.resources.append(TextResourceModel(name: "text", text: "This is a very long description text, I hope that all of you will like it"))
-        myServer?.resources.append(TextResourceModel(name: "text2", text: "Short is better"))
+        myServer?.resources.append(TextResourceModel(name: "text", text: "This is a very long description text, I hope that all of you will like it", server: myServer))
+        myServer?.resources.append(TextResourceModel(name: "text2", text: "Short is better", server: myServer))
         myServer?.delegate = self
         
         tableView.contentInset = UIEdgeInsetsMake(64.0, 0, 0, 0)
@@ -53,7 +53,7 @@ extension ExampleViewController: UITableViewDataSource {
 
 extension ExampleViewController: SCServerDelegate {
     func swiftCoapServer(server: SCServer, didFailWithError error: NSError) {
-        println("Could not setup server")
+        println("Failed with Error \(error.localizedDescription)")
     }
     
     func swiftCoapServer(server: SCServer, didHandleRequestWithCode code: SCCodeValue, forResource resource: SCResourceModel) {
@@ -63,5 +63,9 @@ extension ExampleViewController: SCServerDelegate {
     
     func swiftCoapServer(server: SCServer, didRejectRequestWithCode requestCode: SCCodeValue, forPath path: String, withResponseCode responseCode: SCCodeValue) {
         println("DId Reject Request for resource path \(path)")
+    }
+    
+    func swiftCoapServer(server: SCServer, didSendSeparateResponseMessage: SCMessage, number: Int) {
+        
     }
 }

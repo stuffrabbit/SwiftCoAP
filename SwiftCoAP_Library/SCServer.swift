@@ -12,6 +12,7 @@ protocol SCServerDelegate {
     func swiftCoapServer(server: SCServer, didFailWithError error: NSError)
     func swiftCoapServer(server: SCServer, didHandleRequestWithCode code: SCCodeValue, forResource resource: SCResourceModel)
     func swiftCoapServer(server: SCServer, didRejectRequestWithCode requestCode: SCCodeValue, forPath path: String, withResponseCode responseCode: SCCodeValue)
+    func swiftCoapServer(server: SCServer, didSendSeparateResponseMessage: SCMessage, number: Int)
 }
 
 enum SCAllowedRoute: UInt {
@@ -21,14 +22,30 @@ enum SCAllowedRoute: UInt {
     case Delete = 0b1000
 }
 
+enum SCServerErrorCode: Int {
+    case UdpSocketSendError, ReceivedInvalidMessageError, NoResponseExpectedError
+    
+    func descriptionString() -> String {
+        switch self {
+        case .UdpSocketSendError:
+            return "Failed to send data via UDP"
+        case .ReceivedInvalidMessageError:
+            return "Data received was not a valid CoAP Message"
+        case .NoResponseExpectedError:
+            return "The recipient does not respond"
+        }
+    }
+}
+
 protocol SCResourceModel {
     var name: String { get }
     var allowedRoutes: UInt { get }
-
+    
     var maxAgeValue: UInt! { get set }
     var etag: NSData! { get set }
-
     
+    
+    func willHandleDataAsynchronouslyForGet(#queryDictionary: [String : String], options: [Int : [NSData]], originalMessage: SCMessage) -> Bool
     func dataForGet(#queryDictionary: [String : String], options: [Int : [NSData]]) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!)?
     func dataForPost(#queryDictionary: [String : String], options: [Int : [NSData]], requestData: NSData?) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!)?
     func dataForPut(#queryDictionary: [String : String], options: [Int : [NSData]], requestData: NSData?) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!)?
@@ -36,15 +53,23 @@ protocol SCResourceModel {
 }
 
 class SCServer: NSObject {
-   
+    
+    let kCoapErrorDomain = "SwiftCoapErrorDomain"
+    let kAckTimeout = 2.0
+    let kAckRandomFactor = 1.5
+    let kMaxRetransmit = 4
+    let kMaxTransmitWait = 93.0
+    
     var delegate: SCServerDelegate?
+    
     private var currentRequestMessages: [SCMessage]!
     private let port: UInt16
     private var udpSocket: GCDAsyncUdpSocket!
     private var udpSocketTag: Int = 0
+    private lazy var pendingMessagesForEndpoints = [NSData : (SCMessage, NSTimer?)]()
     
     lazy var resources = [SCResourceModel]()
-
+    
     init?(port: UInt16) {
         self.port = port
         super.init()
@@ -53,6 +78,30 @@ class SCServer: NSObject {
             return nil
         }
     }
+    
+    func didCompleteAsynchronousRequestForOriginalMessage(message: SCMessage, resource: SCResourceModel, values:(statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!)) {
+        println("completed Async Request")
+        var type: SCType = message.type == .Confirmable ? .Confirmable : .NonConfirmable
+        var separateMessage = createMessageForValues((values.statusCode, values.payloadData, values.contentFormat, nil), withType: type, relatedMessage: message, requestedResource: resource)
+        separateMessage.messageId = UInt16(arc4random_uniform(0xFFFF) &+ 1)
+        if let addressData = separateMessage.addressData {
+            if let tuple = pendingMessagesForEndpoints[addressData], oldTimer = tuple.1 where oldTimer.valid {
+                oldTimer.invalidate()
+            }
+            
+            var timer: NSTimer!
+            if separateMessage.type == .Confirmable {
+                println("starting resend timer")
+                var timeout = kAckTimeout * 2.0 * (kAckRandomFactor - (Double(arc4random()) / Double(UINT32_MAX) % 0.5));
+                timer = NSTimer(timeInterval: timeout, target: self, selector: Selector("handleRetransmission:"), userInfo: ["retransmissionCount" : 1, "totalTime" : timeout, "message" : separateMessage], repeats: false)
+                NSRunLoop.currentRunLoop().addTimer(timer, forMode: NSRunLoopCommonModes)
+            }
+            pendingMessagesForEndpoints[addressData] = (separateMessage, timer)
+            sendMessage(separateMessage)
+        }
+    }
+    
+    // MARK: Private Methods
     
     private func setUpUdpSocket() -> Bool {
         udpSocket = GCDAsyncUdpSocket(delegate: self, delegateQueue: dispatch_get_main_queue())
@@ -72,12 +121,112 @@ class SCServer: NSObject {
         let emptyMessage = SCMessage(code: code, type: type, payload: payload)
         emptyMessage.messageId = messageId
         emptyMessage.token = token
-        sendMessage(emptyMessage, toAddress: addressData)
+        emptyMessage.addressData = addressData
+        sendMessage(emptyMessage)
     }
     
-    private func sendMessage(message: SCMessage, toAddress addressData: NSData) {
-        udpSocket?.sendData(message.toData()!, toAddress: addressData, withTimeout: 0, tag: udpSocketTag)
+    private func sendMessage(message: SCMessage) {
+        udpSocket?.sendData(message.toData()!, toAddress: message.addressData, withTimeout: 0, tag: udpSocketTag)
         udpSocketTag = (udpSocketTag % Int.max) + 1
+    }
+    
+    
+    //Actually PRIVATE! Do not call from outside. Has to be internally visible as NSTimer won't find it otherwise
+    
+    func handleRetransmission(timer: NSTimer) {
+        println("retransmitting dis")
+        var retransmissionCount = timer.userInfo!["retransmissionCount"] as! Int
+        var totalTime = timer.userInfo!["totalTime"] as! Double
+        var message = timer.userInfo!["message"] as! SCMessage
+        
+        sendMessage(message)
+        delegate?.swiftCoapServer(self, didSendSeparateResponseMessage: message, number: retransmissionCount)
+        
+        if let addressData = message.addressData, tuple = pendingMessagesForEndpoints[addressData] {
+            let nextTimer: NSTimer
+            if retransmissionCount < kMaxRetransmit {
+                var timeout = kAckTimeout * pow(2.0, Double(retransmissionCount)) * (kAckRandomFactor - (Double(arc4random()) / Double(UINT32_MAX) % 0.5));
+                nextTimer = NSTimer(timeInterval: timeout, target: self, selector: Selector("handleRetransmission:"), userInfo: ["retransmissionCount" : retransmissionCount + 1, "totalTime" : totalTime + timeout, "message" : message], repeats: false)
+            }
+            else {
+                nextTimer = NSTimer(timeInterval: kMaxTransmitWait - totalTime, target: self, selector: Selector("notifyNoResponseExpected:"), userInfo: ["message" : message], repeats: false)
+            }
+            NSRunLoop.currentRunLoop().addTimer(nextTimer, forMode: NSRunLoopCommonModes)
+            pendingMessagesForEndpoints[addressData] = (tuple.0, nextTimer)
+        }
+    }
+    
+    
+    //Actually PRIVATE! Do not call from outside. Has to be internally visible as NSTimer won't find it otherwise
+    
+    func notifyNoResponseExpected(timer: NSTimer)  {
+        var message = timer.userInfo!["message"] as! SCMessage
+        if let addressData = message.addressData, tuple = pendingMessagesForEndpoints[addressData] {
+            pendingMessagesForEndpoints[addressData] = (tuple.0, nil)
+        }
+        notifyDelegateWithErrorCode(.NoResponseExpectedError)
+    }
+    
+    private func notifyDelegateWithErrorCode(clientErrorCode: SCServerErrorCode) {
+        delegate?.swiftCoapServer(self, didFailWithError: NSError(domain: kCoapErrorDomain, code: clientErrorCode.rawValue, userInfo: [NSLocalizedDescriptionKey : clientErrorCode.descriptionString()]))
+    }
+    
+    /*
+    //Actually PRIVATE! Do not call from outside. Has to be internally visible as NSTimer won't find it otherwise
+    
+    func sendWithRentransmissionHandling() {
+    sendPendingMessage()
+    
+    if retransmissionCounter < kMaxRetransmit {
+    var timeout = kAckTimeout * pow(2.0, Double(retransmissionCounter)) * (kAckRandomFactor - (Double(arc4random()) / Double(UINT32_MAX) % 0.5));
+    currentTransmitWait += timeout
+    transmissionTimer = NSTimer(timeInterval: timeout, target: self, selector: "sendWithRentransmissionHandling", userInfo: nil, repeats: false)
+    retransmissionCounter++
+    }
+    else {
+    transmissionTimer = NSTimer(timeInterval: kMaxTransmitWait - currentTransmitWait, target: self, selector: "notifyNoResponseExpected", userInfo: nil, repeats: false)
+    }
+    NSRunLoop.currentRunLoop().addTimer(transmissionTimer, forMode: NSRunLoopCommonModes)
+    }
+    
+    //Actually PRIVATE! Do not call from outside. Has to be internally visible as NSTimer won't find it otherwise
+    
+    func notifyNoResponseExpected() {
+    closeTransmission()
+    notifyDelegateWithErrorCode(.NoResponseExpectedError)
+    }
+    */
+    private func createMessageForValues(values: (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!), withType type: SCType, relatedMessage message: SCMessage, requestedResource resource: SCResourceModel) -> SCMessage {
+        var responseMessage = SCMessage(code: values.statusCode, type: type, payload: values.payloadData)
+        
+        if values.contentFormat != nil {
+            var contentFormatByteArray = values.contentFormat.rawValue.toByteArray()
+            responseMessage.addOption(SCOption.ContentFormat.rawValue, data: NSData(bytes: &contentFormatByteArray, length: contentFormatByteArray.count))
+        }
+        
+        if values.locationUri != nil {
+            if let (pathDataArray, queryDataArray) = SCMessage.getPathAndQueryDataArrayFromUriString(values.locationUri) where pathDataArray.count > 0 {
+                responseMessage.options[SCOption.LocationPath.rawValue] = pathDataArray
+                if queryDataArray.count > 0 {
+                    responseMessage.options[SCOption.LocationQuery.rawValue] = queryDataArray
+                }
+            }
+        }
+        
+        if resource.maxAgeValue != nil {
+            var byteArray = resource.maxAgeValue.toByteArray()
+            responseMessage.addOption(SCOption.MaxAge.rawValue, data: NSData(bytes: &byteArray, length: byteArray.count))
+        }
+        
+        if resource.etag != nil {
+            responseMessage.addOption(SCOption.Etag.rawValue, data: resource.etag)
+        }
+        
+        responseMessage.messageId = message.messageId
+        responseMessage.token = message.token
+        responseMessage.addressData = message.addressData
+        
+        return responseMessage
     }
 }
 
@@ -92,12 +241,17 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
             case .Reset:
                 return
             case .Acknowledgement:
-                return //TODO handle Separate Messagesjtus
+                if let tuple = pendingMessagesForEndpoints[address], oldTimer = tuple.1 where tuple.0.messageId == message.messageId {
+                    oldTimer.invalidate()
+                    pendingMessagesForEndpoints[address] = (tuple.0, nil)
+                }
+                return
             case .Confirmable:
                 resultType = .Acknowledgement
             default:
                 resultType = .NonConfirmable
             }
+            message.addressData = address
             
             if message.code == SCCodeValue(classValue: 0, detailValue: 00) || message.code.classValue >= 1 {
                 if message.type == .Confirmable || message.type == .NonConfirmable {
@@ -121,16 +275,24 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                 sendMessageWithType(resultType, code: responseCode, payload: "Method Not Allowed".dataUsingEncoding(NSUTF8StringEncoding), messageId: message.messageId, addressData: address, token: message.token)
                 delegate?.swiftCoapServer(self, didRejectRequestWithCode: message.code, forPath: message.completeUriPath(), withResponseCode: responseCode)
             }
-
+            
             if resultResource != nil {
-
+                
                 //GET
-                var responseMessage: SCMessage!
                 var resultTuple: (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!)!
                 
                 switch message.code {
                 case SCCodeValue(classValue: 0, detailValue: 01) where resultResource.allowedRoutes & SCAllowedRoute.Get.rawValue == SCAllowedRoute.Get.rawValue:
-                    if let (statusCode, payloadData, contentFormat) = resultResource.dataForGet(queryDictionary: message.uriQueryDictionary(), options: message.options) {
+                    if resultResource.willHandleDataAsynchronouslyForGet(queryDictionary: message.uriQueryDictionary(), options: message.options, originalMessage: message) {
+                        println("Will Handle Async")
+                        if message.type == .Confirmable {
+                            sendMessageWithType(.Acknowledgement, code: SCCodeValue(classValue: 0, detailValue: 00), payload: nil, messageId: message.messageId, addressData: address)
+                            println("Sending empty ACK")
+                        }
+                        delegate?.swiftCoapServer(self, didHandleRequestWithCode: message.code, forResource: resultResource)
+                        return
+                    }
+                    else if let (statusCode, payloadData, contentFormat) = resultResource.dataForGet(queryDictionary: message.uriQueryDictionary(), options: message.options) {
                         resultTuple = (statusCode, payloadData, contentFormat, nil)
                     }
                 case SCCodeValue(classValue: 0, detailValue: 02) where resultResource.allowedRoutes & SCAllowedRoute.Post.rawValue == SCAllowedRoute.Post.rawValue:
@@ -143,7 +305,7 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                     }
                 case SCCodeValue(classValue: 0, detailValue: 04) where resultResource.allowedRoutes & SCAllowedRoute.Delete.rawValue == SCAllowedRoute.Delete.rawValue:
                     if let (statusCode, payloadData, contentFormat) = resultResource.dataForDelete(queryDictionary: message.uriQueryDictionary(), options: message.options) {
-                        resultTuple = (statusCode, payloadData, contentFormat, nil)                        
+                        resultTuple = (statusCode, payloadData, contentFormat, nil)
                     }
                 default:
                     respondMethodNotAllowed()
@@ -151,34 +313,8 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                 }
                 
                 if resultTuple != nil {
-                    responseMessage = SCMessage(code: resultTuple.statusCode, type: resultType, payload: resultTuple.payloadData)
-                    
-                    if resultTuple.contentFormat != nil {
-                        var contentFormatByteArray = resultTuple.contentFormat.rawValue.toByteArray()
-                        responseMessage.addOption(SCOption.ContentFormat.rawValue, data: NSData(bytes: &contentFormatByteArray, length: contentFormatByteArray.count))
-                    }
-                    
-                    if resultTuple.locationUri != nil {
-                        if let (pathDataArray, queryDataArray) = SCMessage.getPathAndQueryDataArrayFromUriString(resultTuple.locationUri) where pathDataArray.count > 0 {
-                            responseMessage.options[SCOption.LocationPath.rawValue] = pathDataArray
-                            if queryDataArray.count > 0 {
-                                responseMessage.options[SCOption.LocationQuery.rawValue] = queryDataArray
-                            }
-                        }
-                    }
-                    
-                    if resultResource.maxAgeValue != nil {
-                        var byteArray = resultResource.maxAgeValue.toByteArray()
-                        responseMessage.addOption(SCOption.MaxAge.rawValue, data: NSData(bytes: &byteArray, length: byteArray.count))
-                    }
-                    
-                    if resultResource.etag != nil {
-                        responseMessage.addOption(SCOption.Etag.rawValue, data: resultResource.etag)
-                    }
-                    
-                    responseMessage.messageId = message.messageId
-                    responseMessage.token = message.token
-                    sendMessage(responseMessage, toAddress: address)
+                    var responseMessage = createMessageForValues(resultTuple, withType: resultType, relatedMessage: message, requestedResource: resultResource)
+                    sendMessage(responseMessage)
                     delegate?.swiftCoapServer(self, didHandleRequestWithCode: message.code, forResource: resultResource)
                 }
                 else {
@@ -194,5 +330,6 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
     }
     
     func udpSocket(sock: GCDAsyncUdpSocket!, didNotSendDataWithTag tag: Int, dueToError error: NSError!) {
+        notifyDelegateWithErrorCode(.UdpSocketSendError)
     }
 }

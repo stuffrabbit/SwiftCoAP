@@ -68,7 +68,7 @@ enum SCOption: Int {
     case ProxyUri = 35
     case ProxyScheme = 39
     case Size1 = 60
-
+    
     static let allValues = [IfMatch, UriHost, Etag, IfNoneMatch, Observe, UriPort, LocationPath, UriPath, ContentFormat, MaxAge, UriQuery, Accept, LocationQuery, Block2, Block1, Size2, ProxyUri, ProxyScheme, Size1]
     
     enum Format {
@@ -137,7 +137,7 @@ enum SCOption: Int {
     static func isNumberNoCacheKey(optionNo: Int) -> Bool {
         return optionNo & 0b11110 == 0b11100
     }
-
+    
     func isNoCacheKey() -> Bool {
         return SCOption.isNumberNoCacheKey(self.rawValue)
     }
@@ -228,7 +228,7 @@ struct SCCodeValue: Equatable {
     
     func toRawValue() -> UInt8? {
         if classValue > 0b111 || detailValue > 0b11111 { return nil }
-
+        
         return classValue << 5 + detailValue
     }
     
@@ -251,7 +251,7 @@ struct SCCodeValue: Equatable {
     
     func toString() -> String? {
         if classValue > 0b111 || detailValue > 0b11111 { return nil }
-
+        
         return String(format: "%i.%02d", classValue, detailValue)
     }
     
@@ -308,7 +308,7 @@ public extension UInt {
 class SCMessage: NSObject {
     
     //MARK: Constants and Properties
-
+    
     //CONSTANTS
     static let kCoapVersion = 0b01
     static let kProxyCoAPTypeKey = "COAP_TYPE"
@@ -316,7 +316,7 @@ class SCMessage: NSObject {
     let kDefaultMaxAgeValue: UInt = 60
     let kOptionOneByteExtraValue: UInt8 = 13
     let kOptionTwoBytesExtraValue: UInt8 = 14
-
+    
     //INTERNAL PROPERTIES (allowed to modify)
     
     var code: SCCodeValue = SCCodeValue(classValue: 0, detailValue: 0) //Code value is Empty by default
@@ -325,11 +325,12 @@ class SCMessage: NSObject {
     var blockBody: NSData? //Helper for Block1 tranmission. Used by SCClient, modification has no effect
     
     lazy var options = [Int: [NSData]]() //CoAP-Options. It is recommend to use the addOption(..) method to add a new option.
-
     
-    //The following properties are modified by SCClient. Modification has no effect and is therefore not recommended
+    
+    //The following properties are modified by SCClient/SCServer. Modification has no effect and is therefore not recommended
     var hostName: String?
     var port: UInt16?
+    var addressData: NSData?
     
     var messageId: UInt16!
     var token: UInt64 = 0
@@ -338,7 +339,7 @@ class SCMessage: NSObject {
     
     
     //MARK: Internal Methods (allowed to use)
-
+    
     convenience init(code: SCCodeValue, type: SCType, payload: NSData?) {
         self.init()
         self.code = code
@@ -400,7 +401,7 @@ class SCMessage: NSObject {
         if let maxAgeValues = options[SCOption.MaxAge.rawValue], firstData = maxAgeValues.first {
             return validateMaxAge(UInt.fromData(firstData))
         }
-  
+        
         return validateMaxAge(kDefaultMaxAgeValue)
     }
     
@@ -431,7 +432,7 @@ class SCMessage: NSObject {
         else {
             return nil //Format Error
         }
-
+        
         if tokenLength > 0 {
             var tokenByteArray = [UInt8]()
             for var i = 0; i < tokenLength; i++ {
@@ -475,7 +476,7 @@ class SCMessage: NSObject {
                     optionFirstByte += kOptionTwoBytesExtraValue
                     var extendedLengthValue: UInt16 = UInt16(value.length) - (UInt16(kOptionTwoBytesExtraValue) + 0xFF)
                     var extendedByteArray: [UInt8] = [UInt8(extendedLengthValue >> 8), UInt8(extendedLengthValue & 0xFF)]
-
+                    
                     extendedLength = NSData(bytes: &extendedByteArray, length: extendedByteArray.count)
                 }
                 else if value.length >= Int(kOptionOneByteExtraValue) {
@@ -513,7 +514,7 @@ class SCMessage: NSObject {
         var parserIndex = 4
         var headerBytes = [UInt8](count: parserIndex, repeatedValue: 0)
         data.getBytes(&headerBytes, length: parserIndex)
-
+        
         var firstByte = headerBytes[0]
         let tokenLenght = Int(firstByte) & 0xF
         firstByte >>= 4
@@ -535,7 +536,7 @@ class SCMessage: NSObject {
             }
         }
         parserIndex += tokenLenght
-
+        
         var currentOptDelta = 0
         while parserIndex < data.length {
             var nextByte: UInt8 = 0
@@ -698,7 +699,7 @@ class SCMessage: NSObject {
             }
             return resultDataArray
         }
-
+        
         let splitArray = uriString.componentsSeparatedByString("?")
         
         if splitArray.count <= 2 {

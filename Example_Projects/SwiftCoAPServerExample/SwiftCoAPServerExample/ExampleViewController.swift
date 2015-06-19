@@ -17,8 +17,8 @@ class ExampleViewController: UIViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        myServer?.resources.append(TextResourceModel(name: "text", text: "This is a very long description text, I hope that all of you will like it", server: myServer))
-        myServer?.resources.append(TextResourceModel(name: "text2", text: "Short is better", server: myServer))
+        myServer?.resources.append(TextResourceModel(name: "text", allowedRoutes: SCAllowedRoute.Get.rawValue | SCAllowedRoute.Post.rawValue, text: "This is a very long description text, I hope that all of you will like it", server: myServer))
+       // myServer?.resources.append(TextResourceModel(name: "text2", allowedRoutes: SCAllowedRoute.Get.rawValue | SCAllowedRoute.Post.rawValue, text: "Short is better", server: myServer))
         myServer?.delegate = self
         
         tableView.contentInset = UIEdgeInsetsMake(64.0, 0, 0, 0)

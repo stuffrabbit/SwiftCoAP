@@ -371,8 +371,8 @@ extension SCClient: GCDAsyncUdpSocketDelegate {
             }
             
             //Handle Observe-Option (Observe Draft Section 3.4)
-            if let observeValue = message.options[SCOption.Observe.rawValue] {
-                let currentNumber  = UInt.fromData(observeValue.first!)
+            if let observeValueArray = message.options[SCOption.Observe.rawValue], observeValue = observeValueArray.first {
+                let currentNumber  = UInt.fromData(observeValue)
                 if recentNotificationInfo == nil ||
                    (recentNotificationInfo.1 < currentNumber && currentNumber - recentNotificationInfo.1 < kMaxObserveOptionValue) ||
                    (recentNotificationInfo.1 > currentNumber && recentNotificationInfo.1 - currentNumber > kMaxObserveOptionValue) ||

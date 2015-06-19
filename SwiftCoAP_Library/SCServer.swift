@@ -37,23 +37,7 @@ enum SCServerErrorCode: Int {
     }
 }
 
-protocol SCResourceModel {
-    var name: String { get }
-    var allowedRoutes: UInt { get }
-    
-    var maxAgeValue: UInt! { get set }
-    var etag: NSData! { get set }
-
-    
-    func willHandleDataAsynchronouslyForGet(#queryDictionary: [String : String], options: [Int : [NSData]], originalMessage: SCMessage) -> Bool
-    func dataForGet(#queryDictionary: [String : String], options: [Int : [NSData]]) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!)?
-    func dataForPost(#queryDictionary: [String : String], options: [Int : [NSData]], requestData: NSData?) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!)?
-    func dataForPut(#queryDictionary: [String : String], options: [Int : [NSData]], requestData: NSData?) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!)?
-    func dataForDelete(#queryDictionary: [String : String], options: [Int : [NSData]]) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!)?
-}
-
 class SCServer: NSObject {
-   
     let kCoapErrorDomain = "SwiftCoapErrorDomain"
     let kAckTimeout = 2.0
     let kAckRandomFactor = 1.5
@@ -66,10 +50,11 @@ class SCServer: NSObject {
     private let port: UInt16
     private var udpSocket: GCDAsyncUdpSocket!
     private var udpSocketTag: Int = 0
-    private lazy var pendingMessagesForEndpoints = [NSData : (SCMessage, NSTimer?)]()
-
+    private lazy var pendingMessagesForEndpoints = [NSData : [(SCMessage, NSTimer?)]]()
+    private lazy var registeredObserverForResource = [SCResourceModel : [(UInt64, NSData, UInt)]]()
+    
     lazy var resources = [SCResourceModel]()
-
+    
     init?(port: UInt16) {
         self.port = port
         super.init()
@@ -83,24 +68,30 @@ class SCServer: NSObject {
         var type: SCType = message.type == .Confirmable ? .Confirmable : .NonConfirmable
         var separateMessage = createMessageForValues((values.statusCode, values.payloadData, values.contentFormat, nil), withType: type, relatedMessage: message, requestedResource: resource)
         separateMessage.messageId = UInt16(arc4random_uniform(0xFFFF) &+ 1)
-        if let addressData = separateMessage.addressData {
-            if let tuple = pendingMessagesForEndpoints[addressData], oldTimer = tuple.1 where oldTimer.valid {
-                oldTimer.invalidate()
+        setupReliableTransmissionOfMessage(separateMessage, forResource: resource)
+    }
+    
+    func updateRegisteredObserversForResource(resource: SCResourceModel) {
+        if var valueArray = registeredObserverForResource[resource] {
+            for var i = 0; i < valueArray.count; i++ {
+                let (token, address, sequenceNumber) = valueArray[i]
+                var notification = SCMessage(code: SCCodeValue(classValue: 2, detailValue: 05), type: .Confirmable, payload: resource.observableData)
+                notification.token = token
+                notification.messageId = UInt16(arc4random_uniform(0xFFFF) &+ 1)
+                notification.addressData = address
+                var newSequenceNumber = (sequenceNumber + 1) % UInt(pow(2.0, 24))
+                var byteArray = newSequenceNumber.toByteArray()
+                notification.addOption(SCOption.Observe.rawValue, data: NSData(bytes: &byteArray, length: byteArray.count))
+                valueArray[i] = (token, address, newSequenceNumber)
+                registeredObserverForResource[resource] = valueArray
+                setupReliableTransmissionOfMessage(notification, forResource: resource)
             }
-            
-            var timer: NSTimer!
-            if separateMessage.type == .Confirmable {
-                var timeout = kAckTimeout * 2.0 * (kAckRandomFactor - (Double(arc4random()) / Double(UINT32_MAX) % 0.5));
-                timer = NSTimer(timeInterval: timeout, target: self, selector: Selector("handleRetransmission:"), userInfo: ["retransmissionCount" : 1, "totalTime" : timeout, "message" : separateMessage], repeats: false)
-                NSRunLoop.currentRunLoop().addTimer(timer, forMode: NSRunLoopCommonModes)
-            }
-            pendingMessagesForEndpoints[addressData] = (separateMessage, timer)
-            sendMessage(separateMessage)
         }
     }
     
+    
     // MARK: Private Methods
-
+    
     private func setUpUdpSocket() -> Bool {
         udpSocket = GCDAsyncUdpSocket(delegate: self, delegateQueue: dispatch_get_main_queue())
         
@@ -113,6 +104,27 @@ class SCServer: NSObject {
             return false
         }
         return true
+    }
+    
+    private func setupReliableTransmissionOfMessage(message: SCMessage, forResource resource: SCResourceModel) {
+        if let addressData = message.addressData {
+            var timer: NSTimer!
+            if message.type == .Confirmable {
+                message.resourceForConfirmableResponse = resource
+                var timeout = kAckTimeout * 2.0 * (kAckRandomFactor - (Double(arc4random()) / Double(UINT32_MAX) % 0.5));
+                timer = NSTimer(timeInterval: timeout, target: self, selector: Selector("handleRetransmission:"), userInfo: ["retransmissionCount" : 1, "totalTime" : timeout, "message" : message, "resource" : resource], repeats: false)
+                NSRunLoop.currentRunLoop().addTimer(timer, forMode: NSRunLoopCommonModes)
+            }
+            sendMessage(message)
+            
+            if var contextArray = pendingMessagesForEndpoints[addressData] {
+                contextArray.append((message, timer))
+                pendingMessagesForEndpoints[addressData] = contextArray
+            }
+            else {
+                pendingMessagesForEndpoints[addressData] = [(message, timer)]
+            }
+        }
     }
     
     private func sendMessageWithType(type: SCType, code: SCCodeValue, payload: NSData?, messageId: UInt16, addressData: NSData, token: UInt64 = 0) {
@@ -135,21 +147,30 @@ class SCServer: NSObject {
         var retransmissionCount = timer.userInfo!["retransmissionCount"] as! Int
         var totalTime = timer.userInfo!["totalTime"] as! Double
         var message = timer.userInfo!["message"] as! SCMessage
-        
+        var resource = timer.userInfo!["resource"] as! SCResourceModel
         sendMessage(message)
         delegate?.swiftCoapServer(self, didSendSeparateResponseMessage: message, number: retransmissionCount)
         
-        if let addressData = message.addressData, tuple = pendingMessagesForEndpoints[addressData] {
+        if let addressData = message.addressData, var contextArray = pendingMessagesForEndpoints[addressData] {
             let nextTimer: NSTimer
             if retransmissionCount < kMaxRetransmit {
                 var timeout = kAckTimeout * pow(2.0, Double(retransmissionCount)) * (kAckRandomFactor - (Double(arc4random()) / Double(UINT32_MAX) % 0.5));
-                nextTimer = NSTimer(timeInterval: timeout, target: self, selector: Selector("handleRetransmission:"), userInfo: ["retransmissionCount" : retransmissionCount + 1, "totalTime" : totalTime + timeout, "message" : message], repeats: false)
+                nextTimer = NSTimer(timeInterval: timeout, target: self, selector: Selector("handleRetransmission:"), userInfo: ["retransmissionCount" : retransmissionCount + 1, "totalTime" : totalTime + timeout, "message" : message, "resource" : resource], repeats: false)
             }
             else {
-                nextTimer = NSTimer(timeInterval: kMaxTransmitWait - totalTime, target: self, selector: Selector("notifyNoResponseExpected:"), userInfo: ["message" : message], repeats: false)
+                nextTimer = NSTimer(timeInterval: kMaxTransmitWait - totalTime, target: self, selector: Selector("notifyNoResponseExpected:"), userInfo: ["message" : message, "resource" : resource], repeats: false)
             }
             NSRunLoop.currentRunLoop().addTimer(nextTimer, forMode: NSRunLoopCommonModes)
-            pendingMessagesForEndpoints[addressData] = (tuple.0, nextTimer)
+            
+            //Update context
+            for var i = 0; i < contextArray.count; i++ {
+                let tuple = contextArray[i]
+                if tuple.0 == message {
+                    contextArray[i] = (tuple.0, nextTimer)
+                    pendingMessagesForEndpoints[addressData] = contextArray
+                    break
+                }
+            }
         }
     }
     
@@ -158,41 +179,49 @@ class SCServer: NSObject {
     
     func notifyNoResponseExpected(timer: NSTimer)  {
         var message = timer.userInfo!["message"] as! SCMessage
-        if let addressData = message.addressData, tuple = pendingMessagesForEndpoints[addressData] {
-            pendingMessagesForEndpoints[addressData] = (tuple.0, nil)
-        }
+        var resource = timer.userInfo!["resource"] as! SCResourceModel
+        
+        removeContextForMessage(message)
         notifyDelegateWithErrorCode(.NoResponseExpectedError)
+        
+        if message.options[SCOption.Observe.rawValue] != nil, let address = message.addressData {
+            deregisterObserveForResource(resource, address: address)
+        }
+    }
+    
+    private func removeContextForMessage(message: SCMessage) {
+        if let addressData = message.addressData, var contextArray = pendingMessagesForEndpoints[addressData] {
+            
+            func removeFromContextAtIndex(index: Int) {
+                contextArray.removeAtIndex(index)
+                if contextArray.count > 0 {
+                    pendingMessagesForEndpoints[addressData] = contextArray
+                }
+                else {
+                    pendingMessagesForEndpoints.removeValueForKey(addressData)
+                }
+            }
+            
+            for var i = 0; i < contextArray.count; i++ {
+                let tuple = contextArray[i]
+                if tuple.0.messageId == message.messageId {
+                    if let oldTimer = tuple.1 {
+                        oldTimer.invalidate()
+                    }
+                    if message.type == .Reset && tuple.0.options[SCOption.Observe.rawValue] != nil, let resource = tuple.0.resourceForConfirmableResponse  {
+                        deregisterObserveForResource(resource, address: addressData)
+                    }
+                    removeFromContextAtIndex(i)
+                    break
+                }
+            }
+        }
     }
     
     private func notifyDelegateWithErrorCode(clientErrorCode: SCServerErrorCode) {
         delegate?.swiftCoapServer(self, didFailWithError: NSError(domain: kCoapErrorDomain, code: clientErrorCode.rawValue, userInfo: [NSLocalizedDescriptionKey : clientErrorCode.descriptionString()]))
     }
     
-    /*
-    //Actually PRIVATE! Do not call from outside. Has to be internally visible as NSTimer won't find it otherwise
-    
-    func sendWithRentransmissionHandling() {
-        sendPendingMessage()
-        
-        if retransmissionCounter < kMaxRetransmit {
-            var timeout = kAckTimeout * pow(2.0, Double(retransmissionCounter)) * (kAckRandomFactor - (Double(arc4random()) / Double(UINT32_MAX) % 0.5));
-            currentTransmitWait += timeout
-            transmissionTimer = NSTimer(timeInterval: timeout, target: self, selector: "sendWithRentransmissionHandling", userInfo: nil, repeats: false)
-            retransmissionCounter++
-        }
-        else {
-            transmissionTimer = NSTimer(timeInterval: kMaxTransmitWait - currentTransmitWait, target: self, selector: "notifyNoResponseExpected", userInfo: nil, repeats: false)
-        }
-        NSRunLoop.currentRunLoop().addTimer(transmissionTimer, forMode: NSRunLoopCommonModes)
-    }
-    
-    //Actually PRIVATE! Do not call from outside. Has to be internally visible as NSTimer won't find it otherwise
-    
-    func notifyNoResponseExpected() {
-        closeTransmission()
-        notifyDelegateWithErrorCode(.NoResponseExpectedError)
-    }
-*/
     private func createMessageForValues(values: (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!), withType type: SCType, relatedMessage message: SCMessage, requestedResource resource: SCResourceModel) -> SCMessage {
         var responseMessage = SCMessage(code: values.statusCode, type: type, payload: values.payloadData)
         
@@ -219,36 +248,83 @@ class SCServer: NSObject {
             responseMessage.addOption(SCOption.Etag.rawValue, data: resource.etag)
         }
         
+        if resource.observableData != nil, let observeValueArray = message.options[SCOption.Observe.rawValue], observeValue = observeValueArray.first, msgAddr = message.addressData {
+            if observeValue.length > 0 && UInt.fromData(observeValue) == 1 {
+                deregisterObserveForResource(resource, address: msgAddr)
+            }
+            else {
+                //Register for Observe
+                var newValueArray: [(UInt64, NSData, UInt)]
+                var currentSequenceNumber: UInt = 0
+                if var valueArray = registeredObserverForResource[resource] {
+                    if let index = getIndexOfObserverInValueArray(valueArray, address: msgAddr) {
+                        let (_, _, sequenceNumber) = valueArray[index]
+                        var newSequenceNumber = (sequenceNumber + 1) % UInt(pow(2.0, 24))
+                        currentSequenceNumber = UInt(newSequenceNumber)
+                        valueArray[index] = (message.token, msgAddr, newSequenceNumber)
+                    }
+                    else {
+                        valueArray.append((message.token, msgAddr, 0))
+                    }
+                    newValueArray = valueArray
+                }
+                else {
+                    newValueArray = [(message.token, msgAddr, 0)]
+                }
+                
+                registeredObserverForResource[resource] = newValueArray
+                var byteArray = currentSequenceNumber.toByteArray()
+                responseMessage.addOption(SCOption.Observe.rawValue, data: NSData(bytes: &byteArray, length: byteArray.count))
+            }
+        }
+        
         responseMessage.messageId = message.messageId
         responseMessage.token = message.token
         responseMessage.addressData = message.addressData
         
         return responseMessage
     }
+    
+    private func deregisterObserveForResource(resource: SCResourceModel, address: NSData) {
+        if var valueArray = registeredObserverForResource[resource], let index = getIndexOfObserverInValueArray(valueArray, address: address) {
+            valueArray.removeAtIndex(index)
+            if valueArray.count == 0 {
+                registeredObserverForResource.removeValueForKey(resource)
+            }
+            else {
+                registeredObserverForResource[resource] = valueArray
+            }
+        }
+    }
+    
+    private func getIndexOfObserverInValueArray(valueArray: [(UInt64, NSData, UInt)], address: NSData) -> Int? {
+        for var i = 0; i < valueArray.count; i++ {
+            let (_, add, _) = valueArray[i]
+            if add == address {
+                return i
+            }
+        }
+        return nil
+    }
 }
 
 extension SCServer: GCDAsyncUdpSocketDelegate {
     func udpSocket(sock: GCDAsyncUdpSocket!, didReceiveData data: NSData!, fromAddress address: NSData!, withFilterContext filterContext: AnyObject!) {
         if let message = SCMessage.fromData(data) {
+            message.addressData = address
             
             //Filter
             
             var resultType: SCType
             switch message.type {
-            case .Reset:
-                return
-            case .Acknowledgement:
-                if let tuple = pendingMessagesForEndpoints[address], oldTimer = tuple.1 where tuple.0.messageId == message.messageId {
-                    oldTimer.invalidate()
-                    pendingMessagesForEndpoints[address] = (tuple.0, nil)
-                }
-                return
             case .Confirmable:
                 resultType = .Acknowledgement
-            default:
+            case .NonConfirmable:
                 resultType = .NonConfirmable
+            default:
+                removeContextForMessage(message)
+                return
             }
-            message.addressData = address
             
             if message.code == SCCodeValue(classValue: 0, detailValue: 00) || message.code.classValue >= 1 {
                 if message.type == .Confirmable || message.type == .NonConfirmable {
@@ -260,8 +336,9 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
             //URI-Path
             
             var resultResource: SCResourceModel!
+            let completeUri =  message.completeUriPath()
             for resource in resources {
-                if resource.name == message.completeUriPath() {
+                if resource.name == completeUri {
                     resultResource = resource
                     break
                 }
@@ -272,10 +349,8 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                 sendMessageWithType(resultType, code: responseCode, payload: "Method Not Allowed".dataUsingEncoding(NSUTF8StringEncoding), messageId: message.messageId, addressData: address, token: message.token)
                 delegate?.swiftCoapServer(self, didRejectRequestWithCode: message.code, forPath: message.completeUriPath(), withResponseCode: responseCode)
             }
-
+            
             if resultResource != nil {
-
-                //GET
                 var resultTuple: (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!)!
                 
                 switch message.code {
@@ -300,7 +375,7 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                     }
                 case SCCodeValue(classValue: 0, detailValue: 04) where resultResource.allowedRoutes & SCAllowedRoute.Delete.rawValue == SCAllowedRoute.Delete.rawValue:
                     if let (statusCode, payloadData, contentFormat) = resultResource.dataForDelete(queryDictionary: message.uriQueryDictionary(), options: message.options) {
-                        resultTuple = (statusCode, payloadData, contentFormat, nil)                        
+                        resultTuple = (statusCode, payloadData, contentFormat, nil)
                     }
                 default:
                     respondMethodNotAllowed()

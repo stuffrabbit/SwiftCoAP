@@ -301,6 +301,27 @@ public extension UInt {
     }
 }
 
+//MARK:
+//MARK: Resource Implementation, used for SCServer
+
+class SCResourceModel: NSObject {
+    let name: String
+    let allowedRoutes: UInt
+    var maxAgeValue: UInt!
+    var etag: NSData!
+    var observableData: NSData!
+    
+    init(name: String, allowedRoutes: UInt) {
+        self.name = name
+        self.allowedRoutes = allowedRoutes
+    }
+    
+    func willHandleDataAsynchronouslyForGet(#queryDictionary: [String : String], options: [Int : [NSData]], originalMessage: SCMessage) -> Bool { return false }
+    func dataForGet(#queryDictionary: [String : String], options: [Int : [NSData]]) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!)? { return nil }
+    func dataForPost(#queryDictionary: [String : String], options: [Int : [NSData]], requestData: NSData?) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!)? { return nil }
+    func dataForPut(#queryDictionary: [String : String], options: [Int : [NSData]], requestData: NSData?) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!)? { return nil }
+    func dataForDelete(#queryDictionary: [String : String], options: [Int : [NSData]]) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!)? { return nil }
+}
 
 //MARK:
 //MARK: SC Message IMPLEMENTATION
@@ -331,7 +352,7 @@ class SCMessage: NSObject {
     var hostName: String?
     var port: UInt16?
     var addressData: NSData?
-    
+    var resourceForConfirmableResponse: SCResourceModel?
     var messageId: UInt16!
     var token: UInt64 = 0
     

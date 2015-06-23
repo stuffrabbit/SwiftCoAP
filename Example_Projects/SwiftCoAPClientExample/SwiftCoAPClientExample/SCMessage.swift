@@ -335,6 +335,12 @@ class SCMessage: NSObject {
     static let kCoapVersion = 0b01
     static let kProxyCoAPTypeKey = "COAP_TYPE"
     
+    static let kCoapErrorDomain = "SwiftCoapErrorDomain"
+    static let kAckTimeout = 2.0
+    static let kAckRandomFactor = 1.5
+    static let kMaxRetransmit = 4
+    static let kMaxTransmitWait = 93.0
+    
     let kDefaultMaxAgeValue: UInt = 60
     let kOptionOneByteExtraValue: UInt8 = 13
     let kOptionTwoBytesExtraValue: UInt8 = 14

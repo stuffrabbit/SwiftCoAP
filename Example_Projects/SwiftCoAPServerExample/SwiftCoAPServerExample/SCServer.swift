@@ -8,13 +8,31 @@
 
 import UIKit
 
+
+//MARK:
+//MARK: SC Server Delegate Protocol implementation
+
 protocol SCServerDelegate {
+    
+    //Tells the delegate that an error occured during or before transmission (refer to the "SCServerErrorCode" Enum)
     func swiftCoapServer(server: SCServer, didFailWithError error: NSError)
+    
+    //Tells the delegate that a request on a particular resource was successfully handled and a response was or will be provided
     func swiftCoapServer(server: SCServer, didHandleRequestWithCode code: SCCodeValue, forResource resource: SCResourceModel)
+    
+    //Tells the delegate that a recently received request with a uripath was rejected with a particular reponse (error) code (e.g. Method Not Allowed, Not Found, etc.)
     func swiftCoapServer(server: SCServer, didRejectRequestWithCode requestCode: SCCodeValue, forPath path: String, withResponseCode responseCode: SCCodeValue)
+    
+    //Tells the delegate that a separate response was processed
     func swiftCoapServer(server: SCServer, didSendSeparateResponseMessage: SCMessage, number: Int)
+    
+    //Tells the delegate that all registered observers for the particular resource will be notified due to a change of its data representation
     func swiffCoapServer(server: SCServer, willUpdatedObserversForResource resource: SCResourceModel)
 }
+
+
+//MARK:
+//MARK: SC Allowed Route Enumeration
 
 enum SCAllowedRoute: UInt {
     case Get = 0b1
@@ -22,6 +40,10 @@ enum SCAllowedRoute: UInt {
     case Put = 0b100
     case Delete = 0b1000
 }
+
+
+//MARK:
+//MARK: SC Server Error Code Enumeration
 
 enum SCServerErrorCode: Int {
     case UdpSocketSendError, ReceivedInvalidMessageError, NoResponseExpectedError
@@ -38,22 +60,21 @@ enum SCServerErrorCode: Int {
     }
 }
 
+
+//MARK:
+//MARK: SC Server IMPLEMENTATION
+
 class SCServer: NSObject {
-    let kCoapErrorDomain = "SwiftCoapErrorDomain"
-    let kAckTimeout = 2.0
-    let kAckRandomFactor = 1.5
-    let kMaxRetransmit = 4
-    let kMaxTransmitWait = 93.0
+    
+    //MARK: Properties
+
+    //INTERNAL PROPERTIES (allowed to modify)
     
     var delegate: SCServerDelegate?
-    var autoBlock2SZX: UInt? = 2 {
-        didSet {
-            if autoBlock2SZX > 6 {
-                autoBlock2SZX = 6
-            }
-        }
-    }
-    //If not nil, Block2 transfer will be used automatically when the payload size exceeds the value 2^(autoBlock2SZX + 4). Valid Values: 0-6.
+    var autoBlock2SZX: UInt? = 2 { didSet { if let newValue = autoBlock2SZX { autoBlock2SZX = min(6, newValue) } } } //If not nil, Block2 transfer will be used automatically when the payload size exceeds the value 2^(autoBlock2SZX + 4). Valid Values: 0-6.
+    lazy var resources = [SCResourceModel]()
+    
+    //PRIVATE PROPERTIES
 
     private var currentRequestMessages: [SCMessage]!
     private let port: UInt16
@@ -64,7 +85,7 @@ class SCServer: NSObject {
     private lazy var registeredObserverForResource = [SCResourceModel : [(UInt64, NSData, UInt, UInt?)]]() //Token, Address, SequenceNumber, PrefferedBlock2SZX
     private lazy var block1UploadsForEndpoints = [NSData : [(SCResourceModel, UInt, NSData?)]]()
 
-    lazy var resources = [SCResourceModel]()
+    //MARK: Internal Methods (allowed to use)
 
     init?(port: UInt16) {
         self.port = port
@@ -75,6 +96,8 @@ class SCServer: NSObject {
         }
     }
     
+    //Call this method when your resource is ready to process a separate response. The concerned resource must return true for the method `willHandleDataAsynchronouslyForGet(...)`. It is necessary to pass the original message and the resource (both received in `willHandleDataAsynchronouslyForGet`) so that the server is able to retrieve the current context. Additionay, you have to pass the typical "values" tuple which form the response (as described in SCMessage -> SCResourceModel)
+    
     func didCompleteAsynchronousRequestForOriginalMessage(message: SCMessage, resource: SCResourceModel, values:(statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!)) {
         var type: SCType = message.type == .Confirmable ? .Confirmable : .NonConfirmable
         if let separateMessage = createMessageForValues((values.statusCode, values.payloadData, values.contentFormat, nil), withType: type, relatedMessage: message, requestedResource: resource) {
@@ -82,6 +105,8 @@ class SCServer: NSObject {
             setupReliableTransmissionOfMessage(separateMessage, forResource: resource)
         }
     }
+    
+    //Call this method when the given resource has updated its data representation in order to notify all registered users (and has "observable" set to true)
     
     func updateRegisteredObserversForResource(resource: SCResourceModel) {
         if var valueArray = registeredObserverForResource[resource] {
@@ -125,7 +150,7 @@ class SCServer: NSObject {
             var timer: NSTimer!
             if message.type == .Confirmable {
                 message.resourceForConfirmableResponse = resource
-                var timeout = kAckTimeout * 2.0 * (kAckRandomFactor - (Double(arc4random()) / Double(UINT32_MAX) % 0.5));
+                var timeout = SCMessage.kAckTimeout * 2.0 * (SCMessage.kAckRandomFactor - (Double(arc4random()) / Double(UINT32_MAX) % 0.5));
                 timer = NSTimer(timeInterval: timeout, target: self, selector: Selector("handleRetransmission:"), userInfo: ["retransmissionCount" : 1, "totalTime" : timeout, "message" : message, "resource" : resource], repeats: false)
                 NSRunLoop.currentRunLoop().addTimer(timer, forMode: NSRunLoopCommonModes)
             }
@@ -170,12 +195,12 @@ class SCServer: NSObject {
         
         if let addressData = message.addressData, var contextArray = pendingMessagesForEndpoints[addressData] {
             let nextTimer: NSTimer
-            if retransmissionCount < kMaxRetransmit {
-                var timeout = kAckTimeout * pow(2.0, Double(retransmissionCount)) * (kAckRandomFactor - (Double(arc4random()) / Double(UINT32_MAX) % 0.5));
+            if retransmissionCount < SCMessage.kMaxRetransmit {
+                var timeout = SCMessage.kAckTimeout * pow(2.0, Double(retransmissionCount)) * (SCMessage.kAckRandomFactor - (Double(arc4random()) / Double(UINT32_MAX) % 0.5));
                 nextTimer = NSTimer(timeInterval: timeout, target: self, selector: Selector("handleRetransmission:"), userInfo: ["retransmissionCount" : retransmissionCount + 1, "totalTime" : totalTime + timeout, "message" : message, "resource" : resource], repeats: false)
             }
             else {
-                nextTimer = NSTimer(timeInterval: kMaxTransmitWait - totalTime, target: self, selector: Selector("notifyNoResponseExpected:"), userInfo: ["message" : message, "resource" : resource], repeats: false)
+                nextTimer = NSTimer(timeInterval: SCMessage.kMaxTransmitWait - totalTime, target: self, selector: Selector("notifyNoResponseExpected:"), userInfo: ["message" : message, "resource" : resource], repeats: false)
             }
             NSRunLoop.currentRunLoop().addTimer(nextTimer, forMode: NSRunLoopCommonModes)
             
@@ -236,7 +261,7 @@ class SCServer: NSObject {
     }
     
     private func notifyDelegateWithErrorCode(clientErrorCode: SCServerErrorCode) {
-        delegate?.swiftCoapServer(self, didFailWithError: NSError(domain: kCoapErrorDomain, code: clientErrorCode.rawValue, userInfo: [NSLocalizedDescriptionKey : clientErrorCode.descriptionString()]))
+        delegate?.swiftCoapServer(self, didFailWithError: NSError(domain: SCMessage.kCoapErrorDomain, code: clientErrorCode.rawValue, userInfo: [NSLocalizedDescriptionKey : clientErrorCode.descriptionString()]))
     }
     
     private func handleBlock2ServerRequirementsForMessage(message: SCMessage, preferredBlockSZX: UInt?) {

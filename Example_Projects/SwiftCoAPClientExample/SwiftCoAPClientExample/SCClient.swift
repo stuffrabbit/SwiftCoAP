@@ -58,34 +58,20 @@ class SCClient: NSObject {
     //MARK: Constants and Properties
     
     //CONSTANTS
-    let kCoapErrorDomain = "SwiftCoapErrorDomain"
-    
-    let kAckTimeout = 2.0
-    let kAckRandomFactor = 1.5
-    let kMaxRetransmit = 4
-    let kMaxTransmitWait = 93.0
     let kMaxObserveOptionValue: UInt = 8388608
-    
     
     //INTERNAL PROPERTIES (allowed to modify)
     
     var delegate: SCClientDelegate?
     var sendToken = true   //If true, a token with 4-8 Bytes is sent
-    var autoBlock1SZX: UInt? = 2 {
-        didSet {
-            if autoBlock1SZX > 6 {
-                autoBlock1SZX = 6
-            }
-        }
-    }
-    //If not nil, Block1 transfer will be used automatically when the payload size exceeds the value 2^(autoBlock1SZX + 4). Valid Values: 0-6.
+    var autoBlock1SZX: UInt? = 2 { didSet { if let newValue = autoBlock1SZX { autoBlock1SZX = min(6, newValue) } } } //If not nil, Block1 transfer will be used automatically when the payload size exceeds the value 2^(autoBlock1SZX + 4). Valid Values: 0-6.
     
-    var httpProxyingData: (hostName: String, port: UInt16)?     //If not nil, all message will be sent via http to the given proxy address
+    var httpProxyingData: (hostName: String, port: UInt16)?     //If not nil, all messages will be sent via http to the given proxy address
     var cachingActive = false   //Activates caching
     
-    //READ-ONLY PROPERTES
+    //READ-ONLY PROPERTIES
     
-    private (set) var isMessageInTransmission = false   //Indicates whether a message is in transmission and/or a responses are still expected (e.g. separate, block, observe)
+    private (set) var isMessageInTransmission = false   //Indicates whether a message is in transmission and/or responses are still expected (e.g. separate, block, observe)
     
     //PRIVATE PROPERTIES
     
@@ -214,14 +200,14 @@ class SCClient: NSObject {
     func sendWithRentransmissionHandling() {
         sendPendingMessage()
         
-        if retransmissionCounter < kMaxRetransmit {
-            var timeout = kAckTimeout * pow(2.0, Double(retransmissionCounter)) * (kAckRandomFactor - (Double(arc4random()) / Double(UINT32_MAX) % 0.5));
+        if retransmissionCounter < SCMessage.kMaxRetransmit {
+            var timeout = SCMessage.kAckTimeout * pow(2.0, Double(retransmissionCounter)) * (SCMessage.kAckRandomFactor - (Double(arc4random()) / Double(UINT32_MAX) % 0.5));
             currentTransmitWait += timeout
             transmissionTimer = NSTimer(timeInterval: timeout, target: self, selector: "sendWithRentransmissionHandling", userInfo: nil, repeats: false)
             retransmissionCounter++
         }
         else {
-            transmissionTimer = NSTimer(timeInterval: kMaxTransmitWait - currentTransmitWait, target: self, selector: "notifyNoResponseExpected", userInfo: nil, repeats: false)
+            transmissionTimer = NSTimer(timeInterval: SCMessage.kMaxTransmitWait - currentTransmitWait, target: self, selector: "notifyNoResponseExpected", userInfo: nil, repeats: false)
         }
         NSRunLoop.currentRunLoop().addTimer(transmissionTimer, forMode: NSRunLoopCommonModes)
     }
@@ -269,7 +255,7 @@ class SCClient: NSObject {
     }
     
     private func notifyDelegateWithErrorCode(clientErrorCode: SCClientErrorCode) {
-        delegate?.swiftCoapClient?(self, didFailWithError: NSError(domain: kCoapErrorDomain, code: clientErrorCode.rawValue, userInfo: [NSLocalizedDescriptionKey : clientErrorCode.descriptionString()]))
+        delegate?.swiftCoapClient?(self, didFailWithError: NSError(domain: SCMessage.kCoapErrorDomain, code: clientErrorCode.rawValue, userInfo: [NSLocalizedDescriptionKey : clientErrorCode.descriptionString()]))
     }
     
     private func handleBlock2WithMessage(message: SCMessage) {
@@ -326,7 +312,7 @@ class SCClient: NSObject {
         var urlRequest = message.toHttpUrlRequestWithUrl()
         var urlString = "http://\(httpProxyingData!.hostName):\(httpProxyingData!.port)/\(message.hostName!):\(message.port!)"
         urlRequest.URL = NSURL(string: urlString)
-        urlRequest.timeoutInterval = kMaxTransmitWait
+        urlRequest.timeoutInterval = SCMessage.kMaxTransmitWait
         urlRequest.cachePolicy = .UseProtocolCachePolicy
 
         NSURLConnection.sendAsynchronousRequest(urlRequest, queue: NSOperationQueue.mainQueue()) { (response, data, error) -> Void in

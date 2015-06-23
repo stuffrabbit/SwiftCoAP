@@ -17,10 +17,12 @@ class ExampleViewController: UIViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        myServer?.resources.append(TextResourceModel(name: "text", allowedRoutes: SCAllowedRoute.Get.rawValue | SCAllowedRoute.Post.rawValue, text: "This is a very long description text, I hope that all of you will like it", server: myServer))
-       // myServer?.resources.append(TextResourceModel(name: "text2", allowedRoutes: SCAllowedRoute.Get.rawValue | SCAllowedRoute.Post.rawValue, text: "Short is better", server: myServer))
+        myServer?.resources.append(TextResourceModel(name: "text", allowedRoutes: SCAllowedRoute.Get.rawValue | SCAllowedRoute.Post.rawValue | SCAllowedRoute.Delete.rawValue, text: "This is a very long description text, I hope that all of you will like it"))
+        myServer?.resources.append(TimeResourceModel(name: "time", allowedRoutes: SCAllowedRoute.Get.rawValue, text: "Current Date Time: \(NSDate())", server: myServer))
+        myServer?.resources.append(SeparateResourceModel(name: "delay", allowedRoutes: SCAllowedRoute.Get.rawValue, text: "Delayed answer...", server: myServer))
+
         myServer?.delegate = self
-        
+        myServer?.autoBlock2SZX = 1
         tableView.contentInset = UIEdgeInsetsMake(64.0, 0, 0, 0)
         tableView.estimatedRowHeight = 44.0
         tableView.rowHeight = UITableViewAutomaticDimension
@@ -44,9 +46,9 @@ extension ExampleViewController: UITableViewDataSource {
     
     func tableView(tableView: UITableView, cellForRowAtIndexPath indexPath: NSIndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCellWithIdentifier(kDefaultCellIdentifier) as! DefaultTableViewCell
-        let textResource = myServer!.resources[indexPath.row] as! TextResourceModel
+        let textResource = myServer!.resources[indexPath.row]
         cell.nameLabel.text = textResource.name
-        cell.detailLabel.text = textResource.myText
+        cell.detailLabel.text = NSString(data: textResource.dataRepresentation, encoding: NSUTF8StringEncoding) as? String
         return cell
     }
 }
@@ -58,14 +60,19 @@ extension ExampleViewController: SCServerDelegate {
     
     func swiftCoapServer(server: SCServer, didHandleRequestWithCode code: SCCodeValue, forResource resource: SCResourceModel) {
         tableView.reloadData()
-        println("DId Handle Request for resource \(resource.name)")
+        println("Did Handle Request for resource \(resource.name)")
     }
     
     func swiftCoapServer(server: SCServer, didRejectRequestWithCode requestCode: SCCodeValue, forPath path: String, withResponseCode responseCode: SCCodeValue) {
-        println("DId Reject Request for resource path \(path)")
+        println("Did Reject Request for resource path \(path)")
     }
     
     func swiftCoapServer(server: SCServer, didSendSeparateResponseMessage: SCMessage, number: Int) {
-        
+        println("Server sent separate Response message)")
+    }
+    
+    func swiffCoapServer(server: SCServer, willUpdatedObserversForResource resource: SCResourceModel) {
+        tableView.reloadData()
+        println("Attempting to Update Observers for resource \(resource.name)")
     }
 }

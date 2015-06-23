@@ -18,6 +18,8 @@
 		9316D7C51B2AE8C600B0B70D /* ExampleViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9316D7C41B2AE8C600B0B70D /* ExampleViewController.swift */; };
 		9316D7C81B2AE91700B0B70D /* TextResourceModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9316D7C71B2AE91700B0B70D /* TextResourceModel.swift */; };
 		9316D7CA1B2C40C000B0B70D /* DefaultTableViewCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9316D7C91B2C40C000B0B70D /* DefaultTableViewCell.swift */; };
+		936CD06E1B3963580041837F /* TimeResourceModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 936CD06D1B3963580041837F /* TimeResourceModel.swift */; };
+		936CD0701B3963A40041837F /* SeparateResourceModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 936CD06F1B3963A40041837F /* SeparateResourceModel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -48,6 +50,8 @@
 		9316D7C41B2AE8C600B0B70D /* ExampleViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ExampleViewController.swift; sourceTree = "<group>"; };
 		9316D7C71B2AE91700B0B70D /* TextResourceModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TextResourceModel.swift; sourceTree = "<group>"; };
 		9316D7C91B2C40C000B0B70D /* DefaultTableViewCell.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DefaultTableViewCell.swift; sourceTree = "<group>"; };
+		936CD06D1B3963580041837F /* TimeResourceModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TimeResourceModel.swift; sourceTree = "<group>"; };
+		936CD06F1B3963A40041837F /* SeparateResourceModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SeparateResourceModel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -143,6 +147,8 @@
 			isa = PBXGroup;
 			children = (
 				9316D7C71B2AE91700B0B70D /* TextResourceModel.swift */,
+				936CD06D1B3963580041837F /* TimeResourceModel.swift */,
+				936CD06F1B3963A40041837F /* SeparateResourceModel.swift */,
 			);
 			name = "CoAPServer Resource Models";
 			sourceTree = "<group>";
@@ -249,6 +255,8 @@
 			files = (
 				9316D7C81B2AE91700B0B70D /* TextResourceModel.swift in Sources */,
 				9316D7C31B2AE89600B0B70D /* SCServer.swift in Sources */,
+				936CD0701B3963A40041837F /* SeparateResourceModel.swift in Sources */,
+				936CD06E1B3963580041837F /* TimeResourceModel.swift in Sources */,
 				9316D7C21B2AE89600B0B70D /* SCMessage.swift in Sources */,
 				9316D7C11B2AE89600B0B70D /* GCDAsyncUdpSocket.m in Sources */,
 				9316D79C1B2AE54400B0B70D /* AppDelegate.swift in Sources */,

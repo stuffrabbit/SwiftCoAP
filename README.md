@@ -23,7 +23,7 @@ This section gives you an impression on how to use the provided data structures.
 
 #### SCMessage
 
-An `SCMessage` represents a CoAP message in SwiftCoAP. You can initialize a message with help of the designated initializer as follows: `SCMessage()`. Alternatively, `SCMessage` provides a convenience initializer (`convenience init(code: SCCodeValue, type: SCType, payload: NSData?)`) that lets you create an instance the following way: 
+`SCMessage` represents a CoAP message in SwiftCoAP. You can initialize a message with help of the designated initializer as follows: `SCMessage()`. Alternatively, `SCMessage` provides a convenience initializer (`convenience init(code: SCCodeValue, type: SCType, payload: NSData?)`) that lets you create an instance the following way: 
 
 ```swift
 SCMessage(code: SCCodeValue(classValue: 0, detailValue: 01), type: .Confirmable, payload: "test".dataUsingEncoding(NSUTF8StringEncoding))
@@ -60,7 +60,7 @@ coapClient.sendCoAPMessage(m, hostName: "coap.me", port: 5683)
 
 ##### HTTP-Proxying
 
-The class `SCClient` gives you the opportunity to send a message as HTTP via a proxy. Just add the following line after initating an `SCClient`object:
+The class `SCClient` gives you the opportunity to send a message as HTTP via a proxy. Just add the following line after initiating an `SCClient`object:
 ```swift
 coapClient.httpProxyingData = ("localhost", 5683)
 ```

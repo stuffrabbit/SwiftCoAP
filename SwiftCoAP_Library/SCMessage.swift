@@ -309,7 +309,8 @@ class SCResourceModel: NSObject {
     let allowedRoutes: UInt
     var maxAgeValue: UInt!
     var etag: NSData!
-    var observableData: NSData!
+    var dataRepresentation: NSData!
+    var observable = false
     
     init(name: String, allowedRoutes: UInt) {
         self.name = name

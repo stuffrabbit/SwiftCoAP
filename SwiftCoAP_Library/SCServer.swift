@@ -13,6 +13,7 @@ protocol SCServerDelegate {
     func swiftCoapServer(server: SCServer, didHandleRequestWithCode code: SCCodeValue, forResource resource: SCResourceModel)
     func swiftCoapServer(server: SCServer, didRejectRequestWithCode requestCode: SCCodeValue, forPath path: String, withResponseCode responseCode: SCCodeValue)
     func swiftCoapServer(server: SCServer, didSendSeparateResponseMessage: SCMessage, number: Int)
+    func swiffCoapServer(server: SCServer, willUpdatedObserversForResource resource: SCResourceModel)
 }
 
 enum SCAllowedRoute: UInt {
@@ -45,13 +46,23 @@ class SCServer: NSObject {
     let kMaxTransmitWait = 93.0
     
     var delegate: SCServerDelegate?
+    var autoBlock2SZX: UInt? = 2 {
+        didSet {
+            if autoBlock2SZX > 6 {
+                autoBlock2SZX = 6
+            }
+        }
+    }
+    //If not nil, Block2 transfer will be used automatically when the payload size exceeds the value 2^(autoBlock2SZX + 4). Valid Values: 0-6.
     
     private var currentRequestMessages: [SCMessage]!
     private let port: UInt16
     private var udpSocket: GCDAsyncUdpSocket!
     private var udpSocketTag: Int = 0
+    
     private lazy var pendingMessagesForEndpoints = [NSData : [(SCMessage, NSTimer?)]]()
-    private lazy var registeredObserverForResource = [SCResourceModel : [(UInt64, NSData, UInt)]]()
+    private lazy var registeredObserverForResource = [SCResourceModel : [(UInt64, NSData, UInt, UInt?)]]() //Token, Address, SequenceNumber, PrefferedBlock2SZX
+    private lazy var block1UploadsForEndpoints = [NSData : [(SCResourceModel, UInt, NSData?)]]()
     
     lazy var resources = [SCResourceModel]()
     
@@ -66,27 +77,30 @@ class SCServer: NSObject {
     
     func didCompleteAsynchronousRequestForOriginalMessage(message: SCMessage, resource: SCResourceModel, values:(statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!)) {
         var type: SCType = message.type == .Confirmable ? .Confirmable : .NonConfirmable
-        var separateMessage = createMessageForValues((values.statusCode, values.payloadData, values.contentFormat, nil), withType: type, relatedMessage: message, requestedResource: resource)
-        separateMessage.messageId = UInt16(arc4random_uniform(0xFFFF) &+ 1)
-        setupReliableTransmissionOfMessage(separateMessage, forResource: resource)
+        if let separateMessage = createMessageForValues((values.statusCode, values.payloadData, values.contentFormat, nil), withType: type, relatedMessage: message, requestedResource: resource) {
+            separateMessage.messageId = UInt16(arc4random_uniform(0xFFFF) &+ 1)
+            setupReliableTransmissionOfMessage(separateMessage, forResource: resource)
+        }
     }
     
     func updateRegisteredObserversForResource(resource: SCResourceModel) {
         if var valueArray = registeredObserverForResource[resource] {
             for var i = 0; i < valueArray.count; i++ {
-                let (token, address, sequenceNumber) = valueArray[i]
-                var notification = SCMessage(code: SCCodeValue(classValue: 2, detailValue: 05), type: .Confirmable, payload: resource.observableData)
+                let (token, address, sequenceNumber, prefferredBlock2SZX) = valueArray[i]
+                var notification = SCMessage(code: SCCodeValue(classValue: 2, detailValue: 05), type: .Confirmable, payload: resource.dataRepresentation)
                 notification.token = token
                 notification.messageId = UInt16(arc4random_uniform(0xFFFF) &+ 1)
                 notification.addressData = address
                 var newSequenceNumber = (sequenceNumber + 1) % UInt(pow(2.0, 24))
                 var byteArray = newSequenceNumber.toByteArray()
                 notification.addOption(SCOption.Observe.rawValue, data: NSData(bytes: &byteArray, length: byteArray.count))
-                valueArray[i] = (token, address, newSequenceNumber)
+                handleBlock2ServerRequirementsForMessage(notification, preferredBlockSZX: prefferredBlock2SZX)
+                valueArray[i] = (token, address, newSequenceNumber, prefferredBlock2SZX)
                 registeredObserverForResource[resource] = valueArray
                 setupReliableTransmissionOfMessage(notification, forResource: resource)
             }
         }
+        delegate?.swiffCoapServer(self, willUpdatedObserversForResource: resource)
     }
     
     
@@ -127,11 +141,14 @@ class SCServer: NSObject {
         }
     }
     
-    private func sendMessageWithType(type: SCType, code: SCCodeValue, payload: NSData?, messageId: UInt16, addressData: NSData, token: UInt64 = 0) {
+    private func sendMessageWithType(type: SCType, code: SCCodeValue, payload: NSData?, messageId: UInt16, addressData: NSData, token: UInt64 = 0, options: [Int: [NSData]]! = nil) {
         let emptyMessage = SCMessage(code: code, type: type, payload: payload)
         emptyMessage.messageId = messageId
         emptyMessage.token = token
         emptyMessage.addressData = addressData
+        if options != nil {
+            emptyMessage.options = options
+        }
         sendMessage(emptyMessage)
     }
     
@@ -222,7 +239,26 @@ class SCServer: NSObject {
         delegate?.swiftCoapServer(self, didFailWithError: NSError(domain: kCoapErrorDomain, code: clientErrorCode.rawValue, userInfo: [NSLocalizedDescriptionKey : clientErrorCode.descriptionString()]))
     }
     
-    private func createMessageForValues(values: (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!), withType type: SCType, relatedMessage message: SCMessage, requestedResource resource: SCResourceModel) -> SCMessage {
+    private func handleBlock2ServerRequirementsForMessage(message: SCMessage, preferredBlockSZX: UInt?) {
+        var req = autoBlock2SZX
+        if let adjustedSZX = preferredBlockSZX {
+            if let currentSZX = req {
+                req = min(currentSZX, adjustedSZX)
+            }
+            else {
+                req = adjustedSZX
+            }
+        }
+        
+        if let activeBlock2SZX = req, currentPayload = message.payload where currentPayload.length > Int(pow(2, Double(4 + activeBlock2SZX))) {
+            var blockValue = UInt(activeBlock2SZX) + 8
+            var byteArray = blockValue.toByteArray()
+            message.addOption(SCOption.Block2.rawValue, data: NSData(bytes: &byteArray, length: byteArray.count))
+            message.payload = currentPayload.subdataWithRange(NSMakeRange(0, Int(pow(2, Double(activeBlock2SZX + 4)))))
+        }
+    }
+    
+    private func createMessageForValues(values: (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!), withType type: SCType, relatedMessage message: SCMessage, requestedResource resource: SCResourceModel) -> SCMessage? {
         var responseMessage = SCMessage(code: values.statusCode, type: type, payload: values.payloadData)
         
         if values.contentFormat != nil {
@@ -248,28 +284,79 @@ class SCServer: NSObject {
             responseMessage.addOption(SCOption.Etag.rawValue, data: resource.etag)
         }
         
-        if resource.observableData != nil, let observeValueArray = message.options[SCOption.Observe.rawValue], observeValue = observeValueArray.first, msgAddr = message.addressData {
+        //Block 2
+        if let block2ValueArray = message.options[SCOption.Block2.rawValue], block2Data = block2ValueArray.first {
+            var actualValue = UInt.fromData(block2Data)
+            var requestedBlockSZX = min(actualValue & 0b111, 6)
+            actualValue >>= 4
+            
+            if let activeBlock2SZX = autoBlock2SZX where activeBlock2SZX < requestedBlockSZX {
+                requestedBlockSZX = activeBlock2SZX
+            }
+            
+            let fixedByteSize = pow(2, Double(requestedBlockSZX + 4))
+            
+            if let currentPayload = values.payloadData {
+                let blocksCount = UInt(ceil(Double(currentPayload.length) / fixedByteSize))
+                if actualValue >= blocksCount {
+                    //invalid block requested
+                    respondWithErrorCode(SCCodeSample.BadOption.codeValue(), diagnosticPayload: "Invalid Block Requested".dataUsingEncoding(NSUTF8StringEncoding), forMessage: message, withType: message.type == .Confirmable ? .Acknowledgement : .NonConfirmable)
+                    return nil
+                }
+                else {
+                    var nextBlockLength: Int
+                    var blockValue = (UInt(actualValue) << 4) + UInt(requestedBlockSZX)
+                    if actualValue < blocksCount - 1 {
+                        blockValue += 8
+                        nextBlockLength = Int(fixedByteSize)
+                    }
+                    else {
+                        nextBlockLength = currentPayload.length - Int(fixedByteSize) * Int(actualValue)
+                    }
+                    var byteArray = blockValue.toByteArray()
+                    responseMessage.addOption(SCOption.Block2.rawValue, data: NSData(bytes: &byteArray, length: byteArray.count))
+                    responseMessage.payload = currentPayload.subdataWithRange(NSMakeRange(Int(fixedByteSize) * Int(actualValue), nextBlockLength))
+                }
+            }
+        }
+        else {
+            handleBlock2ServerRequirementsForMessage(responseMessage, preferredBlockSZX: nil)
+        }
+        
+        //Block 1
+        if let block1ValueArray = message.options[SCOption.Block1.rawValue] {
+            responseMessage.options[SCOption.Block1.rawValue] = block1ValueArray //Echo the option
+        }
+        
+        //Observe
+        if resource.observable, let observeValueArray = message.options[SCOption.Observe.rawValue], observeValue = observeValueArray.first, msgAddr = message.addressData {
             if observeValue.length > 0 && UInt.fromData(observeValue) == 1 {
                 deregisterObserveForResource(resource, address: msgAddr)
             }
             else {
                 //Register for Observe
-                var newValueArray: [(UInt64, NSData, UInt)]
+                var newValueArray: [(UInt64, NSData, UInt, UInt?)]
                 var currentSequenceNumber: UInt = 0
+                var prefferredBlock2SZX: UInt?
+                if let block2ValueArray = message.options[SCOption.Block2.rawValue], block2Data = block2ValueArray.first {
+                    var blockValue = UInt.fromData(block2Data)
+                    prefferredBlock2SZX = blockValue & 0b111
+                }
+                
                 if var valueArray = registeredObserverForResource[resource] {
                     if let index = getIndexOfObserverInValueArray(valueArray, address: msgAddr) {
-                        let (_, _, sequenceNumber) = valueArray[index]
+                        let (_, _, sequenceNumber, _) = valueArray[index]
                         var newSequenceNumber = (sequenceNumber + 1) % UInt(pow(2.0, 24))
                         currentSequenceNumber = UInt(newSequenceNumber)
-                        valueArray[index] = (message.token, msgAddr, newSequenceNumber)
+                        valueArray[index] = (message.token, msgAddr, newSequenceNumber, prefferredBlock2SZX)
                     }
                     else {
-                        valueArray.append((message.token, msgAddr, 0))
+                        valueArray.append((message.token, msgAddr, 0, prefferredBlock2SZX))
                     }
                     newValueArray = valueArray
                 }
                 else {
-                    newValueArray = [(message.token, msgAddr, 0)]
+                    newValueArray = [(message.token, msgAddr, 0, prefferredBlock2SZX)]
                 }
                 
                 registeredObserverForResource[resource] = newValueArray
@@ -277,6 +364,7 @@ class SCServer: NSObject {
                 responseMessage.addOption(SCOption.Observe.rawValue, data: NSData(bytes: &byteArray, length: byteArray.count))
             }
         }
+        
         
         responseMessage.messageId = message.messageId
         responseMessage.token = message.token
@@ -297,14 +385,76 @@ class SCServer: NSObject {
         }
     }
     
-    private func getIndexOfObserverInValueArray(valueArray: [(UInt64, NSData, UInt)], address: NSData) -> Int? {
+    private func getIndexOfObserverInValueArray(valueArray: [(UInt64, NSData, UInt, UInt?)], address: NSData) -> Int? {
         for var i = 0; i < valueArray.count; i++ {
-            let (_, add, _) = valueArray[i]
+            let (_, add, _, _) = valueArray[i]
             if add == address {
                 return i
             }
         }
         return nil
+    }
+    
+    private func retrievePayloadAfterBlock1HandlingWithMessage(message: SCMessage, resultResource: SCResourceModel) -> NSData? {
+        var currentPayload = message.payload
+        
+        if let block1ValueArray = message.options[SCOption.Block1.rawValue], blockData = block1ValueArray.first, address = message.addressData {
+            let blockAsInt = UInt.fromData(blockData)
+            let blockNumber = blockAsInt >> 4
+            if var uploadArray = block1UploadsForEndpoints[address] {
+                for var i = 0; i < uploadArray.count; i++ {
+                    let (resource, sequenceNumber, storedPayload) = uploadArray[i]
+                    if resource == resultResource {
+                        if sequenceNumber + 1 != blockNumber {
+                            respondWithErrorCode(SCCodeSample.RequestEntityIncomplete.codeValue(), diagnosticPayload: "Incomplete Transmission".dataUsingEncoding(NSUTF8StringEncoding), forMessage: message, withType: message.type == .Confirmable ? .Acknowledgement : .NonConfirmable)
+                            return nil
+                        }
+                        var newPayload = NSMutableData(data: storedPayload ?? NSData())
+                        newPayload.appendData(message.payload ?? NSData())
+                        currentPayload = newPayload
+                        
+                        if blockAsInt & 8 == 8 {
+                            //more bit is set: Store Information
+                            uploadArray[i] = (resource, sequenceNumber + 1, currentPayload)
+                            block1UploadsForEndpoints[address] = uploadArray
+                            sendMessageWithType(.Confirmable, code: SCCodeSample.Continue.codeValue(), payload: nil, messageId: message.messageId, addressData: address, token: message.token, options: [SCOption.Block1.rawValue : block1ValueArray])
+                            return nil
+                        }
+                        else {
+                            //No more blocks will be received, cleanup context
+                            uploadArray.removeAtIndex(i)
+                            if uploadArray.count > 0 {
+                                block1UploadsForEndpoints[address] = uploadArray
+                            }
+                            else {
+                                block1UploadsForEndpoints.removeValueForKey(address)
+                            }
+                        }
+                        break
+                    }
+                }
+            }
+            else if blockNumber == 0 {
+                if blockAsInt & 8 == 8 {
+                    block1UploadsForEndpoints[address] = [(resultResource, 0, currentPayload)]
+                    sendMessageWithType(.Confirmable, code: SCCodeSample.Continue.codeValue(), payload: nil, messageId: message.messageId, addressData: address, token: message.token, options: [SCOption.Block1.rawValue : block1ValueArray])
+                    return nil
+                }
+            }
+            else {
+                respondWithErrorCode(SCCodeSample.RequestEntityIncomplete.codeValue(), diagnosticPayload: "Incomplete Transmission".dataUsingEncoding(NSUTF8StringEncoding), forMessage: message, withType: message.type == .Confirmable ? .Acknowledgement : .NonConfirmable)
+                return nil
+            }
+        }
+        return currentPayload
+    }
+    
+    func respondWithErrorCode(responseCode: SCCodeValue, diagnosticPayload: NSData?, forMessage message: SCMessage, withType type: SCType) {
+        var responseCode = SCCodeSample.MethodNotAllowed.codeValue()
+        if let address = message.addressData {
+            sendMessageWithType(type, code: responseCode, payload: diagnosticPayload, messageId: message.messageId, addressData: address, token: message.token)
+            delegate?.swiftCoapServer(self, didRejectRequestWithCode: message.code, forPath: message.completeUriPath(), withResponseCode: responseCode)
+        }
     }
 }
 
@@ -344,14 +494,8 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                 }
             }
             
-            func respondMethodNotAllowed() {
-                var responseCode = SCCodeSample.MethodNotAllowed.codeValue()
-                sendMessageWithType(resultType, code: responseCode, payload: "Method Not Allowed".dataUsingEncoding(NSUTF8StringEncoding), messageId: message.messageId, addressData: address, token: message.token)
-                delegate?.swiftCoapServer(self, didRejectRequestWithCode: message.code, forPath: message.completeUriPath(), withResponseCode: responseCode)
-            }
-            
             if resultResource != nil {
-                var resultTuple: (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!)!
+                var resultTuple: (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!)?
                 
                 switch message.code {
                 case SCCodeValue(classValue: 0, detailValue: 01) where resultResource.allowedRoutes & SCAllowedRoute.Get.rawValue == SCAllowedRoute.Get.rawValue:
@@ -366,36 +510,42 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                         resultTuple = (statusCode, payloadData, contentFormat, nil)
                     }
                 case SCCodeValue(classValue: 0, detailValue: 02) where resultResource.allowedRoutes & SCAllowedRoute.Post.rawValue == SCAllowedRoute.Post.rawValue:
-                    if let tuple = resultResource.dataForPost(queryDictionary: message.uriQueryDictionary(), options: message.options, requestData: message.payload) {
-                        resultTuple = tuple
+                    if let payload = retrievePayloadAfterBlock1HandlingWithMessage(message, resultResource: resultResource) {
+                        if let tuple = resultResource.dataForPost(queryDictionary: message.uriQueryDictionary(), options: message.options, requestData: payload) {
+                            resultTuple = tuple
+                        }
+                    }
+                    else {
+                        return
                     }
                 case SCCodeValue(classValue: 0, detailValue: 03) where resultResource.allowedRoutes & SCAllowedRoute.Put.rawValue == SCAllowedRoute.Put.rawValue:
-                    if let tuple = resultResource.dataForPut(queryDictionary: message.uriQueryDictionary(), options: message.options, requestData: message.payload) {
-                        resultTuple = tuple
+                    if let payload = retrievePayloadAfterBlock1HandlingWithMessage(message, resultResource: resultResource) {
+                        if let tuple = resultResource.dataForPut(queryDictionary: message.uriQueryDictionary(), options: message.options, requestData: payload) {
+                            resultTuple = tuple
+                        }
+                    }
+                    else {
+                        return
                     }
                 case SCCodeValue(classValue: 0, detailValue: 04) where resultResource.allowedRoutes & SCAllowedRoute.Delete.rawValue == SCAllowedRoute.Delete.rawValue:
                     if let (statusCode, payloadData, contentFormat) = resultResource.dataForDelete(queryDictionary: message.uriQueryDictionary(), options: message.options) {
                         resultTuple = (statusCode, payloadData, contentFormat, nil)
                     }
                 default:
-                    respondMethodNotAllowed()
+                    respondWithErrorCode(SCCodeSample.MethodNotAllowed.codeValue(), diagnosticPayload: "Method Not Allowed".dataUsingEncoding(NSUTF8StringEncoding), forMessage: message, withType: resultType)
                     return
                 }
                 
-                if resultTuple != nil {
-                    var responseMessage = createMessageForValues(resultTuple, withType: resultType, relatedMessage: message, requestedResource: resultResource)
+                if let finalTuple = resultTuple, responseMessage = createMessageForValues(finalTuple, withType: resultType, relatedMessage: message, requestedResource: resultResource) {
                     sendMessage(responseMessage)
                     delegate?.swiftCoapServer(self, didHandleRequestWithCode: message.code, forResource: resultResource)
-                    //TODO Payload pruefen fuer Block2
                 }
                 else {
-                    respondMethodNotAllowed()
+                    respondWithErrorCode(SCCodeSample.MethodNotAllowed.codeValue(), diagnosticPayload: "Method Not Allowed".dataUsingEncoding(NSUTF8StringEncoding), forMessage: message, withType: resultType)
                 }
             }
             else {
-                var responseCode = SCCodeValue(classValue: 4, detailValue: 04)
-                sendMessageWithType(resultType, code: responseCode, payload: "Not Found".dataUsingEncoding(NSUTF8StringEncoding), messageId: message.messageId, addressData: address, token: message.token)
-                delegate?.swiftCoapServer(self, didRejectRequestWithCode: message.code, forPath: message.completeUriPath(), withResponseCode: responseCode)
+                respondWithErrorCode(SCCodeValue(classValue: 4, detailValue: 04), diagnosticPayload: "Not Found".dataUsingEncoding(NSUTF8StringEncoding), forMessage: message, withType: resultType)
             }
         }
     }

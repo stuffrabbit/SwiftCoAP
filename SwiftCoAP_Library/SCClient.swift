@@ -71,7 +71,15 @@ class SCClient: NSObject {
     
     var delegate: SCClientDelegate?
     var sendToken = true   //If true, a token with 4-8 Bytes is sent
-    var autoBlock1SZX: UInt? = 2    //If not nil, Block1 transfer will be used automatically when the payload size exceeds the value 2^(autoBlock1SZX +4). Valid Values: 0-6.
+    var autoBlock1SZX: UInt? = 2 {
+        didSet {
+            if autoBlock1SZX > 6 {
+                autoBlock1SZX = 6
+            }
+        }
+    }
+    //If not nil, Block1 transfer will be used automatically when the payload size exceeds the value 2^(autoBlock1SZX + 4). Valid Values: 0-6.
+    
     var httpProxyingData: (hostName: String, port: UInt16)?     //If not nil, all message will be sent via http to the given proxy address
     var cachingActive = false   //Activates caching
     
@@ -139,7 +147,7 @@ class SCClient: NSObject {
                 return
             }
             
-            if message.blockBody == nil && autoBlock1SZX != nil && autoBlock1SZX <= 6 {
+            if message.blockBody == nil && autoBlock1SZX != nil {
                 let fixedByteSize = pow(2, Double(autoBlock1SZX!) + 4)
                 if let payload = message.payload {
                     let blocksCount = ceil(Double(payload.length) / fixedByteSize)
@@ -391,19 +399,17 @@ extension SCClient: GCDAsyncUdpSocketDelegate {
             handleBlock2WithMessage(message)
             
             //Handle Block1
-            if message.code.toCodeSample() == SCCodeSample.Continue, let block1opt = message.options[SCOption.Block1.rawValue] {
-                if let blockData = block1opt.first {
-                    var actualValue = UInt.fromData(blockData)
-                    let serverSZX = actualValue & 0b111
-                    let confirmedBlock = actualValue >> 4
-                    if serverSZX <= 6 {
-                        var blockOffset = 1
-                        if serverSZX < autoBlock1SZX! {
-                            blockOffset = Int(pow(2, Double(autoBlock1SZX! - serverSZX)))
-                            autoBlock1SZX = serverSZX
-                        }
-                        continueBlock1ForBlockNumber(Int(confirmedBlock) + blockOffset, szx: serverSZX)
+            if message.code.toCodeSample() == SCCodeSample.Continue, let block1opt = message.options[SCOption.Block1.rawValue], blockData = block1opt.first {
+                var actualValue = UInt.fromData(blockData)
+                let serverSZX = actualValue & 0b111
+                actualValue >>= 4
+                if serverSZX <= 6 {
+                    var blockOffset = 1
+                    if serverSZX < autoBlock1SZX! {
+                        blockOffset = Int(pow(2, Double(autoBlock1SZX! - serverSZX)))
+                        autoBlock1SZX = serverSZX
                     }
+                    continueBlock1ForBlockNumber(Int(actualValue) + blockOffset, szx: serverSZX)
                 }
             }
 

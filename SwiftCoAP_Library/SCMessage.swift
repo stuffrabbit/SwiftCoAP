@@ -305,19 +305,30 @@ public extension UInt {
 //MARK: Resource Implementation, used for SCServer
 
 class SCResourceModel: NSObject {
-    let name: String
-    let allowedRoutes: UInt
-    var maxAgeValue: UInt!
-    var etag: NSData!
-    var dataRepresentation: NSData!
-    var observable = false
+    let name: String // Name of the resource
+    let allowedRoutes: UInt // Bitmask of allowed routes (see SCAllowedRoutes enum)
+    var maxAgeValue: UInt! // If not nil, every response will contain the provided MaxAge value
+    var etag: NSData! // If not nil, every response will contain the provided eTag
+    var dataRepresentation: NSData! // The current data representation of the resource. Needs to stay up to date
+    var observable = false // If true, a response will contain the Observe option, and endpoints will be able to register as observers in SCServer. Call updateRegisteredObserversForResource(self), anytime your dataRepresentation changes.
     
+    //Desigated initializer
     init(name: String, allowedRoutes: UInt) {
         self.name = name
         self.allowedRoutes = allowedRoutes
     }
     
+    
+    //The Methods for Data reception for allowed routes. SCServer will call the appropriate message upon the reception of a reqeuest. Override the respective methods, which match your allowedRoutes.
+    //SCServer passes a queryDictionary containing the URI query content (e.g ["user_id": "23"]) and all options contained in the respective request. The POST and PUT methods provide the message's payload as well.
+    //Refer to the example resources in the SwiftCoAPServerExample project for implementation examples.
+    
+    
+    //This method lets you decide whether the current GET request shall be processed asynchronously, i.e. if true will be returned, an empty ACK will be sent, and you can provide the actual response by calling the servers "didCompleteAsynchronousRequestForOriginalMessage(...)". Note: "dataForGet" will not be called additionally if you return true.
     func willHandleDataAsynchronouslyForGet(#queryDictionary: [String : String], options: [Int : [NSData]], originalMessage: SCMessage) -> Bool { return false }
+    
+    //The following methods require data for the given routes GET, POST, PUT, DELETE and must be overriden if needed. If you return nil, the server will respond with a "Method not allowed" error code (Make sure that you have set the allowed routes in the "allowedRoutes" bitmask property).
+    //You have to return a tuple with a statuscode, optional payload, optional content format for your provided payload and (in case of POST and PUT) an optional locationURI.
     func dataForGet(#queryDictionary: [String : String], options: [Int : [NSData]]) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!)? { return nil }
     func dataForPost(#queryDictionary: [String : String], options: [Int : [NSData]], requestData: NSData?) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!)? { return nil }
     func dataForPut(#queryDictionary: [String : String], options: [Int : [NSData]], requestData: NSData?) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!)? { return nil }

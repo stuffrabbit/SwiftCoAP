@@ -27,7 +27,7 @@ protocol SCServerDelegate {
     func swiftCoapServer(server: SCServer, didSendSeparateResponseMessage: SCMessage, number: Int)
     
     //Tells the delegate that all registered observers for the particular resource will be notified due to a change of its data representation
-    func swiffCoapServer(server: SCServer, willUpdatedObserversForResource resource: SCResourceModel)
+    func swiftCoapServer(server: SCServer, willUpdatedObserversForResource resource: SCResourceModel)
 }
 
 
@@ -68,6 +68,7 @@ class SCServer: NSObject {
     
     //MARK: Properties
 
+    
     //INTERNAL PROPERTIES (allowed to modify)
     
     var delegate: SCServerDelegate?
@@ -76,8 +77,6 @@ class SCServer: NSObject {
     
     //PRIVATE PROPERTIES
 
-    private var currentRequestMessages: [SCMessage]!
-    private let port: UInt16
     private var udpSocket: GCDAsyncUdpSocket!
     private var udpSocketTag: Int = 0
     
@@ -85,16 +84,58 @@ class SCServer: NSObject {
     private lazy var registeredObserverForResource = [SCResourceModel : [(UInt64, NSData, UInt, UInt?)]]() //Token, Address, SequenceNumber, PrefferedBlock2SZX
     private lazy var block1UploadsForEndpoints = [NSData : [(SCResourceModel, UInt, NSData?)]]()
 
+    
     //MARK: Internal Methods (allowed to use)
 
-    init?(port: UInt16) {
-        self.port = port
-        super.init()
+    
+    //Convenience initializer (failable): Starts server on initialization.
+    
+    convenience init?(port: UInt16) {
+        self.init()
         
-        if !setUpUdpSocket() {
-            return nil
+        if !start(port: port) {
+            return nil //UDP Setup failed
         }
     }
+    
+    
+    //Start server manually, with the given port
+    
+    func start(port: UInt16 = 5683) -> Bool {
+        if udpSocket == nil {
+            udpSocket = GCDAsyncUdpSocket(delegate: self, delegateQueue: dispatch_get_main_queue())
+            
+            var error: NSError?
+            if !udpSocket!.bindToPort(port, error: &error) {
+                return false
+            }
+            
+            if !udpSocket!.beginReceiving(&error) {
+                return false
+            }
+        }
+
+        return true
+    }
+    
+    
+    //Close UDP socket and server ativity
+    
+    func close() {
+        udpSocket?.close()
+        udpSocket = nil
+    }
+    
+    
+    //Reset Context Information
+    
+    func reset() {
+        pendingMessagesForEndpoints = [:]
+        registeredObserverForResource = [:]
+        block1UploadsForEndpoints = [:]
+        resources = []
+    }
+    
     
     //Call this method when your resource is ready to process a separate response. The concerned resource must return true for the method `willHandleDataAsynchronouslyForGet(...)`. It is necessary to pass the original message and the resource (both received in `willHandleDataAsynchronouslyForGet`) so that the server is able to retrieve the current context. Additionay, you have to pass the typical "values" tuple which form the response (as described in SCMessage -> SCResourceModel)
     
@@ -105,6 +146,7 @@ class SCServer: NSObject {
             setupReliableTransmissionOfMessage(separateMessage, forResource: resource)
         }
     }
+    
     
     //Call this method when the given resource has updated its data representation in order to notify all registered users (and has "observable" set to true)
     
@@ -125,25 +167,11 @@ class SCServer: NSObject {
                 setupReliableTransmissionOfMessage(notification, forResource: resource)
             }
         }
-        delegate?.swiffCoapServer(self, willUpdatedObserversForResource: resource)
+        delegate?.swiftCoapServer(self, willUpdatedObserversForResource: resource)
     }
 
     
     // MARK: Private Methods
-
-    private func setUpUdpSocket() -> Bool {
-        udpSocket = GCDAsyncUdpSocket(delegate: self, delegateQueue: dispatch_get_main_queue())
-        
-        var error: NSError?
-        if !udpSocket!.bindToPort(5683, error: &error) {
-            return false
-        }
-        
-        if !udpSocket!.beginReceiving(&error) {
-            return false
-        }
-        return true
-    }
     
     private func setupReliableTransmissionOfMessage(message: SCMessage, forResource resource: SCResourceModel) {
         if let addressData = message.addressData {

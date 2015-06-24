@@ -10,7 +10,7 @@ import UIKit
 
 class ExampleViewController: UIViewController {
 
-    let myServer = SCServer(port: 5683)
+    let myServer: SCServer? = SCServer()
     let kDefaultCellIdentifier = "DefaultCell"
 
     @IBOutlet weak var tableView: UITableView!
@@ -23,19 +23,16 @@ class ExampleViewController: UIViewController {
 
         myServer?.delegate = self
         myServer?.autoBlock2SZX = 1
+        myServer?.start()
+
         tableView.contentInset = UIEdgeInsetsMake(64.0, 0, 0, 0)
         tableView.estimatedRowHeight = 44.0
         tableView.rowHeight = UITableViewAutomaticDimension
     }
     
-    override func viewDidAppear(animated: Bool) {
-        super.viewDidAppear(animated)
-        tableView.reloadData()
-    }
-
-    override func didReceiveMemoryWarning() {
-        super.didReceiveMemoryWarning()
-        // Dispose of any resources that can be recreated.
+    override func viewWillDisappear(animated: Bool) {
+        super.viewWillDisappear(animated)
+        myServer?.close()
     }
 }
 
@@ -71,7 +68,7 @@ extension ExampleViewController: SCServerDelegate {
         println("Server sent separate Response message)")
     }
     
-    func swiffCoapServer(server: SCServer, willUpdatedObserversForResource resource: SCResourceModel) {
+    func swiftCoapServer(server: SCServer, willUpdatedObserversForResource resource: SCResourceModel) {
         tableView.reloadData()
         println("Attempting to Update Observers for resource \(resource.name)")
     }

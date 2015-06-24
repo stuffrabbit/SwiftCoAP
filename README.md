@@ -10,6 +10,8 @@ This implementation provides the standard CoAP features (including Caching) alon
 A short manual is provided below.
 Feedback is highly appreciated!
 
+Want an objective-c implementation? Checkout [iCoAP](https://github.com/stuffrabbit/iCoAP).
+
 Getting Started
 =====
 
@@ -77,4 +79,4 @@ Used Libraries:
 =====
  This version uses the public domain licensed CocoaAsyncSocket library 
  for UDP-socket networking.
- See more on https://github.com/robbiehanson/CocoaAsyncSocket
+ [Click here](https://github.com/robbiehanson/CocoaAsyncSocket) for more information.

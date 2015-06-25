@@ -61,7 +61,7 @@ extension ExampleViewController: SCServerDelegate {
     }
     
     func swiftCoapServer(server: SCServer, didRejectRequestWithCode requestCode: SCCodeValue, forPath path: String, withResponseCode responseCode: SCCodeValue) {
-        println("Did Reject Request with request code: \(requestCode.toString()!) for resource path \(path)")
+        println("Did Reject Request with request code: \(requestCode.toString()!) for resource path \(path) with response code: \(responseCode.toString()!)")
     }
     
     func swiftCoapServer(server: SCServer, didSendSeparateResponseMessage: SCMessage, number: Int) {

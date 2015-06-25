@@ -206,6 +206,7 @@ class SCServer: NSObject {
     }
     
     private func sendMessage(message: SCMessage) {
+        println("sending message: \(message.toData()!)")
         udpSocket?.sendData(message.toData()!, toAddress: message.addressData, withTimeout: 0, tag: udpSocketTag)
         udpSocketTag = (udpSocketTag % Int.max) + 1
     }
@@ -503,7 +504,6 @@ class SCServer: NSObject {
     }
     
     func respondWithErrorCode(responseCode: SCCodeValue, diagnosticPayload: NSData?, forMessage message: SCMessage, withType type: SCType) {
-        var responseCode = SCCodeSample.MethodNotAllowed.codeValue()
         if let address = message.addressData {
             sendMessageWithType(type, code: responseCode, payload: diagnosticPayload, messageId: message.messageId, addressData: address, token: message.token)
             delegate?.swiftCoapServer(self, didRejectRequestWithCode: message.code, forPath: message.completeUriPath(), withResponseCode: responseCode)

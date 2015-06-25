@@ -17,8 +17,8 @@ protocol SCServerDelegate {
     //Tells the delegate that an error occured during or before transmission (refer to the "SCServerErrorCode" Enum)
     func swiftCoapServer(server: SCServer, didFailWithError error: NSError)
     
-    //Tells the delegate that a request on a particular resource was successfully handled and a response was or will be provided
-    func swiftCoapServer(server: SCServer, didHandleRequestWithCode code: SCCodeValue, forResource resource: SCResourceModel)
+    //Tells the delegate that a request on a particular resource was successfully handled and a response was or will be provided with the given response code
+    func swiftCoapServer(server: SCServer, didHandleRequestWithCode requestCode: SCCodeValue, forResource resource: SCResourceModel, withResponseCode responseCode: SCCodeValue)
     
     //Tells the delegate that a recently received request with a uripath was rejected with a particular reponse (error) code (e.g. Method Not Allowed, Not Found, etc.)
     func swiftCoapServer(server: SCServer, didRejectRequestWithCode requestCode: SCCodeValue, forPath path: String, withResponseCode responseCode: SCCodeValue)
@@ -333,7 +333,7 @@ class SCServer: NSObject {
             responseMessage.addOption(SCOption.MaxAge.rawValue, data: NSData(bytes: &byteArray, length: byteArray.count))
         }
         
-        if resource.etag != nil {
+        if resource.etag != nil && message.code == SCCodeValue(classValue: 0, detailValue: 01) {
             responseMessage.addOption(SCOption.Etag.rawValue, data: resource.etag)
         }
         
@@ -552,11 +552,22 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                 
                 switch message.code {
                 case SCCodeValue(classValue: 0, detailValue: 01) where resultResource.allowedRoutes & SCAllowedRoute.Get.rawValue == SCAllowedRoute.Get.rawValue:
+                    //ETAG verification
+                    if resultResource.etag != nil, let etagValueArray = message.options[SCOption.Etag.rawValue] {
+                        for etagData in etagValueArray {
+                            if etagData == resultResource.etag {
+                                sendMessageWithType(resultType, code: SCCodeSample.Valid.codeValue(), payload: nil, messageId: message.messageId, addressData: address, token: message.token, options: [SCOption.Etag.rawValue : [etagData]])
+                                delegate?.swiftCoapServer(self, didHandleRequestWithCode: message.code, forResource: resultResource, withResponseCode: SCCodeSample.Valid.codeValue())
+                                return
+                            }
+                        }
+                    }
+                    
                     if resultResource.willHandleDataAsynchronouslyForGet(queryDictionary: message.uriQueryDictionary(), options: message.options, originalMessage: message) {
                         if message.type == .Confirmable {
                             sendMessageWithType(.Acknowledgement, code: SCCodeValue(classValue: 0, detailValue: 00), payload: nil, messageId: message.messageId, addressData: address)
                         }
-                        delegate?.swiftCoapServer(self, didHandleRequestWithCode: message.code, forResource: resultResource)
+                        delegate?.swiftCoapServer(self, didHandleRequestWithCode: message.code, forResource: resultResource, withResponseCode: SCCodeValue(classValue: 0, detailValue: 00))
                         return
                     }
                     else if let (statusCode, payloadData, contentFormat) = resultResource.dataForGet(queryDictionary: message.uriQueryDictionary(), options: message.options) {
@@ -591,7 +602,7 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                 
                 if let finalTuple = resultTuple, responseMessage = createMessageForValues(finalTuple, withType: resultType, relatedMessage: message, requestedResource: resultResource) {
                     sendMessage(responseMessage)
-                    delegate?.swiftCoapServer(self, didHandleRequestWithCode: message.code, forResource: resultResource)
+                    delegate?.swiftCoapServer(self, didHandleRequestWithCode: message.code, forResource: resultResource, withResponseCode: responseMessage.code)
                 }
                 else {
                     respondWithErrorCode(SCCodeSample.MethodNotAllowed.codeValue(), diagnosticPayload: "Method Not Allowed".dataUsingEncoding(NSUTF8StringEncoding), forMessage: message, withType: resultType)

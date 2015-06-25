@@ -308,8 +308,14 @@ class SCResourceModel: NSObject {
     let name: String // Name of the resource
     let allowedRoutes: UInt // Bitmask of allowed routes (see SCAllowedRoutes enum)
     var maxAgeValue: UInt! // If not nil, every response will contain the provided MaxAge value
-    var etag: NSData! // If not nil, every response will contain the provided eTag
-    var dataRepresentation: NSData! // The current data representation of the resource. Needs to stay up to date
+    private(set) var etag: NSData! // If not nil, every response to a GET request will contain the provided eTag. The etag is generated automatically whenever you update the dataRepresentation of the resource
+    var dataRepresentation: NSData! {
+        didSet {
+            if var hashInt = dataRepresentation?.hashValue {
+                etag = NSData(bytes: &hashInt, length: sizeof(Int))
+            }
+        }
+    }// The current data representation of the resource. Needs to stay up to date
     var observable = false // If true, a response will contain the Observe option, and endpoints will be able to register as observers in SCServer. Call updateRegisteredObserversForResource(self), anytime your dataRepresentation changes.
     
     //Desigated initializer

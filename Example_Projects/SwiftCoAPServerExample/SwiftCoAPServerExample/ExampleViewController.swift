@@ -55,13 +55,13 @@ extension ExampleViewController: SCServerDelegate {
         println("Failed with Error \(error.localizedDescription)")
     }
     
-    func swiftCoapServer(server: SCServer, didHandleRequestWithCode code: SCCodeValue, forResource resource: SCResourceModel) {
+    func swiftCoapServer(server: SCServer, didHandleRequestWithCode requestCode: SCCodeValue, forResource resource: SCResourceModel, withResponseCode responseCode: SCCodeValue) {
         tableView.reloadData()
-        println("Did Handle Request for resource \(resource.name)")
+        println("Did Handle Request with request code: \(requestCode.toString()!) for resource \(resource.name) with response code: \(responseCode.toString()!)")
     }
     
     func swiftCoapServer(server: SCServer, didRejectRequestWithCode requestCode: SCCodeValue, forPath path: String, withResponseCode responseCode: SCCodeValue) {
-        println("Did Reject Request for resource path \(path)")
+        println("Did Reject Request with request code: \(requestCode.toString()!) for resource path \(path)")
     }
     
     func swiftCoapServer(server: SCServer, didSendSeparateResponseMessage: SCMessage, number: Int) {

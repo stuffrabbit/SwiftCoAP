@@ -101,7 +101,7 @@ SwiftCoAP provides the base class `SCResourceModel` to represent a CoAP resource
 * `name: String` The name of the resource
 * `allowedRoutes: UInt` Bitmask of allowed routes (see `SCAllowedRoutes` enum) (you can pass for example `SCAllowedRoute.Get.rawValue | SCAllowedRoute.Post.rawValue` to support GET and POST)
 * `maxAgeValue: UInt!` (default `nil`) If not nil, every response will contain the provided MaxAge value
-* `etag: NSData!` (default `nil`) If not nil, every response will contain the provided eTag
+* `etag: NSData!` (default `nil` and read-only) If not nil, every response will contain the provided eTag. The etag is generated automatically whenever you update the value `dataRepresentation? of the resource (is represented as hashvalue of your data representation).
 * `dataRepresentation: NSData!` The current data representation of the resource. Needs to stay up to date
 * `observable: Bool` (default false) If true, a response will contain the Observe option, and endpoints will be able to register as observers in `SCServer`. Call `updateRegisteredObserversForResource(self)`, anytime the value of your `dataRepresentation` changes.
 

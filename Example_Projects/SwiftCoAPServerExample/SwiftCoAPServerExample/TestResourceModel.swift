@@ -1,15 +1,14 @@
 //
-//  TextResourceModel.swift
+//  TestResourceModel.swift
 //  SwiftCoAPServerExample
 //
-//  Created by Wojtek Kordylewski on 12.06.15.
+//  Created by Wojtek Kordylewski on 25.06.15.
 //  Copyright (c) 2015 Wojtek Kordylewski. All rights reserved.
 //
 
 import UIKit
 
-class TextResourceModel: SCResourceModel {
-    
+class TestResourceModel: SCResourceModel {
     //Individual Properties
     var myText: String {
         didSet {
@@ -31,6 +30,14 @@ class TextResourceModel: SCResourceModel {
     override func dataForPost(#queryDictionary: [String : String], options: [Int : [NSData]], requestData: NSData?) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!)? {
         if let data = requestData, string = NSString(data: data, encoding: NSUTF8StringEncoding) as? String{
             myText = string
+            return (SCCodeSample.Created.codeValue(), "Data created successfully".dataUsingEncoding(NSUTF8StringEncoding), SCContentFormat.Plain, self.name)
+        }
+        return (SCCodeSample.Forbidden.codeValue(), "Invalid Data sent".dataUsingEncoding(NSUTF8StringEncoding), SCContentFormat.Plain, nil)
+    }
+    
+    override func dataForPut(#queryDictionary: [String : String], options: [Int : [NSData]], requestData: NSData?) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!)? {
+        if let data = requestData, string = NSString(data: data, encoding: NSUTF8StringEncoding) as? String{
+            myText += string
             return (SCCodeSample.Changed.codeValue(), "Update Successful".dataUsingEncoding(NSUTF8StringEncoding), SCContentFormat.Plain, self.name)
         }
         return (SCCodeSample.Forbidden.codeValue(), "Invalid Data sent".dataUsingEncoding(NSUTF8StringEncoding), SCContentFormat.Plain, nil)

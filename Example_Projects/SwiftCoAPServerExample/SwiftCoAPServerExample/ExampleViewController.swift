@@ -17,9 +17,9 @@ class ExampleViewController: UIViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        myServer?.resources.append(TextResourceModel(name: "text", allowedRoutes: SCAllowedRoute.Get.rawValue | SCAllowedRoute.Post.rawValue | SCAllowedRoute.Delete.rawValue, text: "This is a very long description text, I hope that all of you will like it"))
+        myServer?.resources.append(TestResourceModel(name: "test", allowedRoutes: SCAllowedRoute.Get.rawValue | SCAllowedRoute.Post.rawValue | SCAllowedRoute.Put.rawValue | SCAllowedRoute.Delete.rawValue, text: "This is a very long description text, I hope that all of you will like it"))
         myServer?.resources.append(TimeResourceModel(name: "time", allowedRoutes: SCAllowedRoute.Get.rawValue, text: "Current Date Time: \(NSDate())", server: myServer))
-        myServer?.resources.append(SeparateResourceModel(name: "delay", allowedRoutes: SCAllowedRoute.Get.rawValue, text: "Delayed answer...", server: myServer))
+        myServer?.resources.append(SeparateResourceModel(name: "separate", allowedRoutes: SCAllowedRoute.Get.rawValue, text: "Delayed answer...", server: myServer))
 
         myServer?.delegate = self
         myServer?.autoBlock2SZX = 1

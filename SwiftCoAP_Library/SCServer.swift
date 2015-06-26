@@ -329,13 +329,15 @@ class SCServer: NSObject {
             }
         }
         
-        if resource.maxAgeValue != nil {
-            var byteArray = resource.maxAgeValue.toByteArray()
-            responseMessage.addOption(SCOption.MaxAge.rawValue, data: NSData(bytes: &byteArray, length: byteArray.count))
-        }
-        
-        if resource.etag != nil && message.code == SCCodeValue(classValue: 0, detailValue: 01) {
-            responseMessage.addOption(SCOption.Etag.rawValue, data: resource.etag)
+        if message.code == SCCodeValue(classValue: 0, detailValue: 01) {
+            if resource.maxAgeValue != nil {
+                var byteArray = resource.maxAgeValue.toByteArray()
+                responseMessage.addOption(SCOption.MaxAge.rawValue, data: NSData(bytes: &byteArray, length: byteArray.count))
+            }
+            
+            if resource.etag != nil  {
+                responseMessage.addOption(SCOption.Etag.rawValue, data: resource.etag)
+            }
         }
         
         //Block 2

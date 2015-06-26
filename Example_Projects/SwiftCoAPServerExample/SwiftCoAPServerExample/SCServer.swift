@@ -67,7 +67,7 @@ enum SCServerErrorCode: Int {
 class SCServer: NSObject {
     
     //MARK: Properties
-
+    
     
     //INTERNAL PROPERTIES (allowed to modify)
     
@@ -76,17 +76,17 @@ class SCServer: NSObject {
     lazy var resources = [SCResourceModel]()
     
     //PRIVATE PROPERTIES
-
+    
     private var udpSocket: GCDAsyncUdpSocket!
     private var udpSocketTag: Int = 0
     
     private lazy var pendingMessagesForEndpoints = [NSData : [(SCMessage, NSTimer?)]]()
     private lazy var registeredObserverForResource = [SCResourceModel : [(UInt64, NSData, UInt, UInt?)]]() //Token, Address, SequenceNumber, PrefferedBlock2SZX
     private lazy var block1UploadsForEndpoints = [NSData : [(SCResourceModel, UInt, NSData?)]]()
-
+    
     
     //MARK: Internal Methods (allowed to use)
-
+    
     
     //Convenience initializer (failable): Starts server on initialization.
     
@@ -114,7 +114,7 @@ class SCServer: NSObject {
                 return false
             }
         }
-
+        
         return true
     }
     
@@ -169,7 +169,7 @@ class SCServer: NSObject {
         }
         delegate?.swiftCoapServer(self, willUpdatedObserversForResource: resource)
     }
-
+    
     
     // MARK: Private Methods
     
@@ -251,10 +251,10 @@ class SCServer: NSObject {
     func notifyNoResponseExpected(timer: NSTimer)  {
         var message = timer.userInfo!["message"] as! SCMessage
         var resource = timer.userInfo!["resource"] as! SCResourceModel
-
+        
         removeContextForMessage(message)
         notifyDelegateWithErrorCode(.NoResponseExpectedError)
-
+        
         if message.options[SCOption.Observe.rawValue] != nil, let address = message.addressData {
             deregisterObserveForResource(resource, address: address)
         }
@@ -262,7 +262,7 @@ class SCServer: NSObject {
     
     private func removeContextForMessage(message: SCMessage) {
         if let addressData = message.addressData, var contextArray = pendingMessagesForEndpoints[addressData] {
-           
+            
             func removeFromContextAtIndex(index: Int) {
                 contextArray.removeAtIndex(index)
                 if contextArray.count > 0 {
@@ -303,7 +303,7 @@ class SCServer: NSObject {
                 req = adjustedSZX
             }
         }
-
+        
         if let activeBlock2SZX = req, currentPayload = message.payload where currentPayload.length > Int(pow(2, Double(4 + activeBlock2SZX))) {
             var blockValue = UInt(activeBlock2SZX) + 8
             var byteArray = blockValue.toByteArray()
@@ -329,13 +329,15 @@ class SCServer: NSObject {
             }
         }
         
-        if resource.maxAgeValue != nil {
-            var byteArray = resource.maxAgeValue.toByteArray()
-            responseMessage.addOption(SCOption.MaxAge.rawValue, data: NSData(bytes: &byteArray, length: byteArray.count))
-        }
-        
-        if resource.etag != nil && message.code == SCCodeValue(classValue: 0, detailValue: 01) {
-            responseMessage.addOption(SCOption.Etag.rawValue, data: resource.etag)
+        if message.code == SCCodeValue(classValue: 0, detailValue: 01) {
+            if resource.maxAgeValue != nil {
+                var byteArray = resource.maxAgeValue.toByteArray()
+                responseMessage.addOption(SCOption.MaxAge.rawValue, data: NSData(bytes: &byteArray, length: byteArray.count))
+            }
+            
+            if resource.etag != nil  {
+                responseMessage.addOption(SCOption.Etag.rawValue, data: resource.etag)
+            }
         }
         
         //Block 2
@@ -343,13 +345,13 @@ class SCServer: NSObject {
             var actualValue = UInt.fromData(block2Data)
             var requestedBlockSZX = min(actualValue & 0b111, 6)
             actualValue >>= 4
-        
+            
             if let activeBlock2SZX = autoBlock2SZX where activeBlock2SZX < requestedBlockSZX {
                 requestedBlockSZX = activeBlock2SZX
             }
             
             let fixedByteSize = pow(2, Double(requestedBlockSZX + 4))
-
+            
             if let currentPayload = values.payloadData {
                 let blocksCount = UInt(ceil(Double(currentPayload.length) / fixedByteSize))
                 if actualValue >= blocksCount {
@@ -412,13 +414,13 @@ class SCServer: NSObject {
                 else {
                     newValueArray = [(message.token, msgAddr, 0, prefferredBlock2SZX)]
                 }
-
+                
                 registeredObserverForResource[resource] = newValueArray
                 var byteArray = currentSequenceNumber.toByteArray()
                 responseMessage.addOption(SCOption.Observe.rawValue, data: NSData(bytes: &byteArray, length: byteArray.count))
             }
         }
-
+        
         
         responseMessage.messageId = message.messageId
         responseMessage.token = message.token
@@ -515,7 +517,7 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
     func udpSocket(sock: GCDAsyncUdpSocket!, didReceiveData data: NSData!, fromAddress address: NSData!, withFilterContext filterContext: AnyObject!) {
         if let message = SCMessage.fromData(data) {
             message.addressData = address
-
+            
             //Filter
             
             var resultType: SCType
@@ -546,7 +548,7 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                     break
                 }
             }
-
+            
             if resultResource != nil {
                 var resultTuple: (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!)?
                 
@@ -593,7 +595,7 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                     }
                 case SCCodeValue(classValue: 0, detailValue: 04) where resultResource.allowedRoutes & SCAllowedRoute.Delete.rawValue == SCAllowedRoute.Delete.rawValue:
                     if let (statusCode, payloadData, contentFormat) = resultResource.dataForDelete(queryDictionary: message.uriQueryDictionary(), options: message.options) {
-                        resultTuple = (statusCode, payloadData, contentFormat, nil)                        
+                        resultTuple = (statusCode, payloadData, contentFormat, nil)
                     }
                 default:
                     respondWithErrorCode(SCCodeSample.MethodNotAllowed.codeValue(), diagnosticPayload: "Method Not Allowed".dataUsingEncoding(NSUTF8StringEncoding), forMessage: message, withType: resultType)

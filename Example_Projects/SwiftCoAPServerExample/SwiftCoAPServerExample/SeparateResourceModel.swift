@@ -33,7 +33,7 @@ class SeparateResourceModel: SCResourceModel {
         )
     }
     
-    override func willHandleDataAsynchronouslyForGet(#queryDictionary: [String : String], options: [Int : [NSData]], originalMessage: SCMessage) -> Bool {
+    override func willHandleDataAsynchronouslyForGet(queryDictionary queryDictionary: [String : String], options: [Int : [NSData]], originalMessage: SCMessage) -> Bool {
         delay(6.0) {
         self.server.didCompleteAsynchronousRequestForOriginalMessage(originalMessage, resource: self, values: (SCCodeValue(classValue: 2, detailValue: 05), self.myText.dataUsingEncoding(NSUTF8StringEncoding), SCContentFormat.Plain))
         }

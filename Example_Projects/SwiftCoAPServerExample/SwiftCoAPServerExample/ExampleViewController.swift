@@ -52,24 +52,24 @@ extension ExampleViewController: UITableViewDataSource {
 
 extension ExampleViewController: SCServerDelegate {
     func swiftCoapServer(server: SCServer, didFailWithError error: NSError) {
-        println("Failed with Error \(error.localizedDescription)")
+        print("Failed with Error \(error.localizedDescription)")
     }
     
     func swiftCoapServer(server: SCServer, didHandleRequestWithCode requestCode: SCCodeValue, forResource resource: SCResourceModel, withResponseCode responseCode: SCCodeValue) {
         tableView.reloadData()
-        println("Did Handle Request with request code: \(requestCode.toString()!) for resource \(resource.name) with response code: \(responseCode.toString()!)")
+        print("Did Handle Request with request code: \(requestCode.toString()!) for resource \(resource.name) with response code: \(responseCode.toString()!)")
     }
     
     func swiftCoapServer(server: SCServer, didRejectRequestWithCode requestCode: SCCodeValue, forPath path: String, withResponseCode responseCode: SCCodeValue) {
-        println("Did Reject Request with request code: \(requestCode.toString()!) for resource path \(path) with response code: \(responseCode.toString()!)")
+        print("Did Reject Request with request code: \(requestCode.toString()!) for resource path \(path) with response code: \(responseCode.toString()!)")
     }
     
     func swiftCoapServer(server: SCServer, didSendSeparateResponseMessage: SCMessage, number: Int) {
-        println("Server sent separate Response message)")
+        print("Server sent separate Response message)")
     }
     
     func swiftCoapServer(server: SCServer, willUpdatedObserversForResource resource: SCResourceModel) {
         tableView.reloadData()
-        println("Attempting to Update Observers for resource \(resource.name)")
+        print("Attempting to Update Observers for resource \(resource.name)")
     }
 }

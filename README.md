@@ -1,5 +1,7 @@
 SwiftCoAP
 =====
+Checkout Branch `swift2` for **Swift 2.0** support. This branch supports Swift 1.2.
+
 
 This project is an implementation of the "Constrained Application Protocol" (CoAP - RFC 7252) in Swift. It is intended for Clients and Servers.
 This implementation provides the standard CoAP features (including Caching) along with the extensions:

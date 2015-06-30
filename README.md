@@ -10,7 +10,7 @@ This implementation provides the standard CoAP features (including Caching) alon
 A short manual is provided below.
 Feedback is highly appreciated!
 
-Want an Objective-c implementation? Checkout [iCoAP](https://github.com/stuffrabbit/iCoAP).
+Want an Objective-C implementation? Checkout [iCoAP](https://github.com/stuffrabbit/iCoAP).
 
 Getting Started
 =====
@@ -55,6 +55,7 @@ Send a message by calling the method `sendCoAPMessage(message: SCMessage, hostNa
 
 ```swift
 let m = SCMessage(code: SCCodeValue(classValue: 0, detailValue: 01), type: .Confirmable, payload: "test".dataUsingEncoding(NSUTF8StringEncoding))
+m.addOption(SCOption.UriPath.rawValue, data: "test".dataUsingEncoding(NSUTF8StringEncoding)!)
 let coapClient = SCClient(delegate: self)
 coapClient.sendCoAPMessage(m, hostName: "coap.me", port: 5683)
 ```
@@ -75,7 +76,7 @@ An Example: Sending your message to the CoAP-Server `coap.me` with the Port `568
 
 #### SCServer
 
-This class represents a CoAP server, which can be initialized with the standard designated initializer `init()`. The given convenience initializer `init?(port: UInt16)` initializes a server instance and automatically starts listening on the given port. This iniitalization can fail if a UDP-socket error occurs.
+This class represents a CoAP server, which can be initialized with the standard designated initializer `init()`. The given convenience initializer `init?(port: UInt16)` initializes a server instance and automatically starts listening on the given port. This initialization can fail if a UDP-socket error occurs.
 
 ##### Properties
 
@@ -83,7 +84,7 @@ You can modify the following properties of an `SCServer` object to alter its beh
 
 * `autoBlock2SZX: UInt?` (default `nil`) If not nil, Block2 transfer will be used automatically in responses when the payload size exceeds the value 2^(autoBlock1SZX +4). Valid Values: 0-6
 * `resources: [SCResourceModel]` Array of `SCResourceModel` objects which represent a resource of the server (see below)
-
+* `autoWellKnownCore: Bool` (default `true`) If set to `true`, the server will automatically provide responses for the resource `well-known/core` with its current resources.
 ##### Methods
 
 * `start(port: UInt16 = 5683) -> Bool` Starts the server manually on the given port
@@ -120,6 +121,16 @@ You have to return a tuple with a statuscode, optional payload, optional content
 * `dataForPut(#queryDictionary: [String : String], options: [Int : [NSData]], requestData: NSData?) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!)?`
 * `dataForDelete(#queryDictionary: [String : String], options: [Int : [NSData]]) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!)?`
 
+##### Server with Resources Example
+```swift
+let server = SCServer(port: 5683)
+        
+let resource = TestResourceModel(name: "test", allowedRoutes: SCAllowedRoute.Get.rawValue | SCAllowedRoute.Post.rawValue | SCAllowedRoute.Put.rawValue | SCAllowedRoute.Delete.rawValue, 
+text: "This is a very long description text, I hope that all of you will like it")
+
+server?.resources.append(resource)
+server?.delegate = self
+```
 
 **Don't hesitate to contact me if something is unclear!**
 

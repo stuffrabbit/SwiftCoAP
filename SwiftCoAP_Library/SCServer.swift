@@ -73,6 +73,7 @@ class SCServer: NSObject {
     
     var delegate: SCServerDelegate?
     var autoBlock2SZX: UInt? = 2 { didSet { if let newValue = autoBlock2SZX { autoBlock2SZX = min(6, newValue) } } } //If not nil, Block2 transfer will be used automatically when the payload size exceeds the value 2^(autoBlock2SZX + 4). Valid Values: 0-6.
+    var autoWellKnownCore = true //If set to true, the server will automatically provide responses for the resource "well-known/core" with its current resources.
     lazy var resources = [SCResourceModel]()
     
     //PRIVATE PROPERTIES
@@ -206,7 +207,6 @@ class SCServer: NSObject {
     }
     
     private func sendMessage(message: SCMessage) {
-        println("sending message: \(message.toData()!)")
         udpSocket?.sendData(message.toData()!, toAddress: message.addressData, withTimeout: 0, tag: udpSocketTag)
         udpSocketTag = (udpSocketTag % Int.max) + 1
     }
@@ -542,10 +542,35 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
             
             var resultResource: SCResourceModel!
             let completeUri =  message.completeUriPath()
-            for resource in resources {
-                if resource.name == completeUri {
-                    resultResource = resource
-                    break
+            if completeUri == ".well-known/core" && autoWellKnownCore {
+                var wellKnownString = ""
+                for resource in resources {
+                    wellKnownString += "</\(resource.name)>"
+                    if resource != resources.last && resources.count > 0 {
+                        wellKnownString += ","
+                    }
+                }
+                if let wellKnownData = wellKnownString.dataUsingEncoding(NSUTF8StringEncoding) {
+                    let wellKnownResponseMessage = SCMessage(code: SCCodeValue(classValue: 2, detailValue: 05), type: resultType, payload: wellKnownData)
+                    wellKnownResponseMessage.messageId = message.messageId
+                    wellKnownResponseMessage.token = message.token
+                    wellKnownResponseMessage.addressData = address
+                    var hashInt = data.hashValue
+                    wellKnownResponseMessage.addOption(SCOption.Etag.rawValue, data: NSData(bytes: &hashInt, length: sizeof(Int)))
+                    var contentValue: UInt8 = UInt8(SCContentFormat.LinkFormat.rawValue)
+                    wellKnownResponseMessage.addOption(SCOption.ContentFormat.rawValue, data: NSData(bytes: &contentValue, length: 1))
+                    handleBlock2ServerRequirementsForMessage(wellKnownResponseMessage, preferredBlockSZX: nil)
+                    sendMessage(wellKnownResponseMessage)
+                    //TODO WEll Known Checken
+                    return
+                }
+            }
+            else {
+                for resource in resources {
+                    if resource.name == completeUri {
+                        resultResource = resource
+                        break
+                    }
                 }
             }
             

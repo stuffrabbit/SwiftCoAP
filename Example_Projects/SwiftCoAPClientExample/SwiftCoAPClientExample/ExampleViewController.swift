@@ -21,7 +21,7 @@ class ExampleViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         coapClient = SCClient(delegate: self)
-        coapClient.cachingActive = true
+        //coapClient.cachingActive = true
         coapClient.sendToken = true
         coapClient.autoBlock1SZX = 2
         //coapClient.httpProxyingData = ("localhost", 5683)
@@ -79,7 +79,7 @@ extension ExampleViewController: SCClientDelegate {
                 payloadstring = String(string)
             }
         }
-        var firstPartString = "Message received with type: \(message.type.shortString())\nwith code: \(message.code.toString()!) \nwith id: \(message.messageId)\nPayload: \(payloadstring)" + separatorLine
+        var firstPartString = "Message received with type: \(message.type.shortString())\nwith code: \(message.code.toString()!) \nwith id: \(message.messageId)\nPayload: \(payloadstring)"
         var optString = "Options:\n"
         for (key, valueArray) in message.options {
             var optName = "Unknown"
@@ -88,12 +88,15 @@ extension ExampleViewController: SCClientDelegate {
                 optName = knownOpt.toString()
             }
 
-            optString += "Number \(optName) (\(key)) \nValue:\n"
+            optString += "\(optName) (\(key))"
 
+            //Add this lines to display the respective option values in the message log
+            /*
             for value in valueArray {
                 optString += "\(value)\n"
             }
             optString += separatorLine
+            */
         }
         textView.text = separatorLine + firstPartString + optString + separatorLine + textView.text
     }

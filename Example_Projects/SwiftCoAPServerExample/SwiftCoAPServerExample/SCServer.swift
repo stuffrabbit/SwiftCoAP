@@ -561,7 +561,6 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                     wellKnownResponseMessage.addOption(SCOption.ContentFormat.rawValue, data: NSData(bytes: &contentValue, length: 1))
                     handleBlock2ServerRequirementsForMessage(wellKnownResponseMessage, preferredBlockSZX: nil)
                     sendMessage(wellKnownResponseMessage)
-                    //TODO WEll Known Checken
                     return
                 }
             }

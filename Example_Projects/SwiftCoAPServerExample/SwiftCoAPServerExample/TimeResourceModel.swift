@@ -36,6 +36,6 @@ class TimeResourceModel: SCResourceModel {
     }
     
     override func dataForGet(queryDictionary queryDictionary: [String : String], options: [Int : [NSData]]) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!)? {
-        return (SCCodeValue(classValue: 2, detailValue: 05)!, myText.dataUsingEncoding(NSUTF8StringEncoding), SCContentFormat.Plain)
+        return (SCCodeValue(classValue: 2, detailValue: 05)!, myText.dataUsingEncoding(NSUTF8StringEncoding), .Plain)
     }
 }

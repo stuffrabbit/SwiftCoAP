@@ -30,10 +30,10 @@ This section gives you an impression on how to use the provided data structures.
 `SCMessage` represents a CoAP message in SwiftCoAP. You can initialize a message with help of the designated initializer as follows: `SCMessage()`. Alternatively, `SCMessage` provides a convenience initializer (`convenience init(code: SCCodeValue, type: SCType, payload: NSData?)`) that lets you create an instance the following way: 
 
 ```swift
-SCMessage(code: SCCodeValue(classValue: 0, detailValue: 01), type: .Confirmable, payload: "test".dataUsingEncoding(NSUTF8StringEncoding))
+SCMessage(code: SCCodeValue(classValue: 0, detailValue: 01)!, type: .Confirmable, payload: "test".dataUsingEncoding(NSUTF8StringEncoding))
 ```
 * The CoAP type is represented as `SCType` of type enum (refer to source code) 
-* The CoAP code is represented as a struct named `SCCodeValue`. The struct lets you apply the CoAP code syntax c.dd (e.g. `SCCodeValue(classValue: 0, detailValue: 01)` equals `0.01`) easily.
+* The CoAP code is represented as a struct named `SCCodeValue`. The struct lets you apply the CoAP code syntax c.dd (e.g. `SCCodeValue(classValue: 0, detailValue: 01)` equals `0.01` (note that this is a failable initializer, which fails when invalid class values (greater 7) or detail values (greater 31) are passed as arguments)).
 * The CoAP options are represented as Dictionary. The option number represents the key (as Int) and the respective value pair represents an Array with NSData objects (in case that the same option is present multiple times). To add an option safely, it is recommended to use the provided `addOption(option: Int, data: NSData)` method.
 
 * Checkout the source code and its comments for more information

@@ -24,7 +24,7 @@ enum SCType: Int {
         case .Acknowledgement:
             return "ACK"
         case .Reset:
-            return "RES"
+            return "RST"
         }
     }
     
@@ -36,7 +36,7 @@ enum SCType: Int {
             return .NonConfirmable
         case "ACK":
             return .Acknowledgement
-        case "RES":
+        case "RST":
             return .Reset
         default:
             return nil
@@ -68,7 +68,7 @@ enum SCOption: Int {
     case ProxyUri = 35
     case ProxyScheme = 39
     case Size1 = 60
-
+    
     static let allValues = [IfMatch, UriHost, Etag, IfNoneMatch, Observe, UriPort, LocationPath, UriPath, ContentFormat, MaxAge, UriQuery, Accept, LocationQuery, Block2, Block1, Size2, ProxyUri, ProxyScheme, Size1]
     
     enum Format {
@@ -137,9 +137,22 @@ enum SCOption: Int {
     static func isNumberNoCacheKey(optionNo: Int) -> Bool {
         return optionNo & 0b11110 == 0b11100
     }
-
+    
     func isNoCacheKey() -> Bool {
         return SCOption.isNumberNoCacheKey(self.rawValue)
+    }
+    
+    static func isNumberRepeatable(optionNo: Int) -> Bool {
+        switch optionNo {
+        case SCOption.IfMatch.rawValue, SCOption.Etag.rawValue, SCOption.LocationPath.rawValue, SCOption.UriPath.rawValue, SCOption.UriQuery.rawValue, SCOption.LocationQuery.rawValue:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    func isRepeatable() -> Bool {
+        return SCOption.isNumberRepeatable(self.rawValue)
     }
     
     func format() -> Format {
@@ -193,6 +206,71 @@ enum SCCodeSample: Int {
     func codeValue() -> SCCodeValue! {
         return SCCodeValue.fromCodeSample(self)
     }
+    
+    func toString() -> String {
+        switch self {
+        case .Empty:
+            return "Empty"
+        case .Get:
+            return "Get"
+        case .Post:
+            return "Post"
+        case .Put:
+            return "Put"
+        case .Delete:
+            return "Delete"
+        case .Created:
+            return "Created"
+        case .Deleted:
+            return "Deleted"
+        case .Valid:
+            return "Valid"
+        case .Changed:
+            return "Changed"
+        case .Content:
+            return "Content"
+        case .Continue:
+            return "Continue"
+        case .BadRequest:
+            return "Bad Request"
+        case .Unauthorized:
+            return "Unauthorized"
+        case .BadOption:
+            return "Bad Option"
+        case .Forbidden:
+            return "Forbidden"
+        case .NotFound:
+            return "Not Found"
+        case .MethodNotAllowed:
+            return "Method Not Allowed"
+        case .NotAcceptable:
+            return "Not Acceptable"
+        case .RequestEntityIncomplete:
+            return "Request Entity Incomplete"
+        case .PreconditionFailed:
+            return "Precondition Failed"
+        case .RequestEntityTooLarge:
+            return "Request Entity Too Large"
+        case .UnsupportedContentFormat:
+            return "Unsupported Content Format"
+        case .InternalServerError:
+            return "Internal Server Error"
+        case .NotImplemented:
+            return "Not Implemented"
+        case .BadGateway:
+            return "Bad Gateway"
+        case .ServiceUnavailable:
+            return "Service Unavailable"
+        case .GatewayTimeout:
+            return "Gateway Timeout"
+        case .ProxyingNotSupported:
+            return "Proxying Not Supported"
+        }
+    }
+    
+    static func stringFromCodeValue(codeValue: SCCodeValue) -> String? {
+        return codeValue.toCodeSample()?.toString()
+    }
 }
 
 
@@ -226,44 +304,49 @@ struct SCCodeValue: Equatable {
     let classValue: UInt8
     let detailValue: UInt8
     
-    func toRawValue() -> UInt8? {
+    init(rawValue: UInt8) {
+        let firstBits: UInt8 = rawValue >> 5
+        let lastBits: UInt8 = rawValue & 0b00011111
+        self.classValue = firstBits
+        self.detailValue = lastBits
+    }
+    
+    //classValue must not be larger than 7; detailValue must not be larger than 31
+    init?(classValue: UInt8, detailValue: UInt8) {
         if classValue > 0b111 || detailValue > 0b11111 { return nil }
-
+        
+        self.classValue = classValue
+        self.detailValue = detailValue
+    }
+    
+    func toRawValue() -> UInt8 {
         return classValue << 5 + detailValue
     }
     
-    static func fromRawValue(value: UInt8) -> SCCodeValue {
-        let firstBits: UInt8 = value >> 5
-        let lastBits: UInt8 = value & 0b00011111
-        return SCCodeValue(classValue: firstBits, detailValue: lastBits)
-    }
-    
     func toCodeSample() -> SCCodeSample? {
-        if let raw = toRawValue(), code = SCCodeSample(rawValue: Int(raw)) {
+        if let code = SCCodeSample(rawValue: Int(toRawValue())) {
             return code
         }
         return nil
     }
     
     static func fromCodeSample(code: SCCodeSample) -> SCCodeValue {
-        return fromRawValue(UInt8(code.rawValue))
+        return SCCodeValue(rawValue: UInt8(code.rawValue))
     }
     
-    func toString() -> String? {
-        if classValue > 0b111 || detailValue > 0b11111 { return nil }
-
+    func toString() -> String {
         return String(format: "%i.%02d", classValue, detailValue)
     }
     
     func requestString() -> String? {
         switch self {
-        case SCCodeValue(classValue: 0, detailValue: 01):
+        case SCCodeValue(classValue: 0, detailValue: 01)!:
             return "GET"
-        case SCCodeValue(classValue: 0, detailValue: 02):
+        case SCCodeValue(classValue: 0, detailValue: 02)!:
             return "POST"
-        case SCCodeValue(classValue: 0, detailValue: 03):
+        case SCCodeValue(classValue: 0, detailValue: 03)!:
             return "PUT"
-        case SCCodeValue(classValue: 0, detailValue: 04):
+        case SCCodeValue(classValue: 0, detailValue: 04)!:
             return "DELETE"
         default:
             return nil
@@ -326,7 +409,7 @@ class SCResourceModel: NSObject {
     
     
     //The Methods for Data reception for allowed routes. SCServer will call the appropriate message upon the reception of a reqeuest. Override the respective methods, which match your allowedRoutes.
-    //SCServer passes a queryDictionary containing the URI query content (e.g ["user_id": "23"]) and all options contained in the respective request. The POST and PUT methods provide the message's payload as well. 
+    //SCServer passes a queryDictionary containing the URI query content (e.g ["user_id": "23"]) and all options contained in the respective request. The POST and PUT methods provide the message's payload as well.
     //Refer to the example resources in the SwiftCoAPServerExample project for implementation examples.
     
     
@@ -347,7 +430,7 @@ class SCResourceModel: NSObject {
 class SCMessage: NSObject {
     
     //MARK: Constants and Properties
-
+    
     //CONSTANTS
     static let kCoapVersion = 0b01
     static let kProxyCoAPTypeKey = "COAP_TYPE"
@@ -361,16 +444,16 @@ class SCMessage: NSObject {
     let kDefaultMaxAgeValue: UInt = 60
     let kOptionOneByteExtraValue: UInt8 = 13
     let kOptionTwoBytesExtraValue: UInt8 = 14
-
+    
     //INTERNAL PROPERTIES (allowed to modify)
     
-    var code: SCCodeValue = SCCodeValue(classValue: 0, detailValue: 0) //Code value is Empty by default
+    var code: SCCodeValue = SCCodeValue(classValue: 0, detailValue: 0)! //Code value is Empty by default
     var type: SCType = .Confirmable //Type is CON by default
     var payload: NSData? //Add a payload (optional)
     var blockBody: NSData? //Helper for Block1 tranmission. Used by SCClient, modification has no effect
     
     lazy var options = [Int: [NSData]]() //CoAP-Options. It is recommend to use the addOption(..) method to add a new option.
-
+    
     
     //The following properties are modified by SCClient/SCServer. Modification has no effect and is therefore not recommended
     var hostName: String?
@@ -384,7 +467,7 @@ class SCMessage: NSObject {
     
     
     //MARK: Internal Methods (allowed to use)
-
+    
     convenience init(code: SCCodeValue, type: SCType, payload: NSData?) {
         self.init()
         self.code = code
@@ -446,7 +529,7 @@ class SCMessage: NSObject {
         if let maxAgeValues = options[SCOption.MaxAge.rawValue], firstData = maxAgeValues.first {
             return validateMaxAge(UInt.fromData(firstData))
         }
-  
+        
         return validateMaxAge(kDefaultMaxAgeValue)
     }
     
@@ -467,17 +550,13 @@ class SCMessage: NSObject {
         if tokenLength > 8 {
             return nil
         }
-        
-        if let codeRawValue = code.toRawValue() {
-            let firstByte: UInt8 = UInt8((SCMessage.kCoapVersion << 6) | (type.rawValue << 4) | tokenLength)
-            var actualMessageId: UInt16 = messageId ?? 0
-            var byteArray: [UInt8] = [firstByte, codeRawValue, UInt8(actualMessageId >> 8), UInt8(actualMessageId & 0xFF)]
-            resultData = NSMutableData(bytes: &byteArray, length: byteArray.count)
-        }
-        else {
-            return nil //Format Error
-        }
 
+        let codeRawValue = code.toRawValue()
+        let firstByte: UInt8 = UInt8((SCMessage.kCoapVersion << 6) | (type.rawValue << 4) | tokenLength)
+        var actualMessageId: UInt16 = messageId ?? 0
+        var byteArray: [UInt8] = [firstByte, codeRawValue, UInt8(actualMessageId >> 8), UInt8(actualMessageId & 0xFF)]
+        resultData = NSMutableData(bytes: &byteArray, length: byteArray.count)
+        
         if tokenLength > 0 {
             var tokenByteArray = [UInt8]()
             for var i = 0; i < tokenLength; i++ {
@@ -521,7 +600,7 @@ class SCMessage: NSObject {
                     optionFirstByte += kOptionTwoBytesExtraValue
                     var extendedLengthValue: UInt16 = UInt16(value.length) - (UInt16(kOptionTwoBytesExtraValue) + 0xFF)
                     var extendedByteArray: [UInt8] = [UInt8(extendedLengthValue >> 8), UInt8(extendedLengthValue & 0xFF)]
-
+                    
                     extendedLength = NSData(bytes: &extendedByteArray, length: extendedByteArray.count)
                 }
                 else if value.length >= Int(kOptionOneByteExtraValue) {
@@ -559,7 +638,7 @@ class SCMessage: NSObject {
         var parserIndex = 4
         var headerBytes = [UInt8](count: parserIndex, repeatedValue: 0)
         data.getBytes(&headerBytes, length: parserIndex)
-
+        
         var firstByte = headerBytes[0]
         let tokenLenght = Int(firstByte) & 0xF
         firstByte >>= 4
@@ -570,7 +649,7 @@ class SCMessage: NSObject {
         //Assign header values to CoAP Message
         var message = SCMessage()
         message.type = type!
-        message.code = SCCodeValue.fromRawValue(headerBytes[1])
+        message.code = SCCodeValue(rawValue: headerBytes[1])
         message.messageId = (UInt16(headerBytes[2]) << 8) + UInt16(headerBytes[3])
         
         if tokenLenght > 0 {
@@ -581,7 +660,7 @@ class SCMessage: NSObject {
             }
         }
         parserIndex += tokenLenght
-
+        
         var currentOptDelta = 0
         while parserIndex < data.length {
             var nextByte: UInt8 = 0
@@ -678,7 +757,7 @@ class SCMessage: NSObject {
     static func fromHttpUrlResponse(urlResponse: NSHTTPURLResponse, data: NSData!) -> SCMessage {
         var message = SCMessage()
         message.payload = data
-        message.code = SCCodeValue.fromRawValue(UInt8(urlResponse.statusCode & 0xff))
+        message.code = SCCodeValue(rawValue: UInt8(urlResponse.statusCode & 0xff))
         if let typeString = urlResponse.allHeaderFields[SCMessage.kProxyCoAPTypeKey] as? String, type = SCType.fromShortString(typeString) {
             message.type = type
         }
@@ -744,7 +823,7 @@ class SCMessage: NSObject {
             }
             return resultDataArray
         }
-
+        
         let splitArray = uriString.componentsSeparatedByString("?")
         
         if splitArray.count <= 2 {

@@ -139,7 +139,7 @@ class SCClient: NSObject {
                     let blocksCount = ceil(Double(payload.length) / fixedByteSize)
                     if blocksCount > 1 {
                         message.blockBody = payload
-                        var blockValue = 8 + UInt(autoBlock1SZX!)
+                        let blockValue = 8 + UInt(autoBlock1SZX!)
                         
                         sendBlock1MessageForCurrentContext(payload: payload.subdataWithRange(NSMakeRange(0, Int(fixedByteSize))), blockValue: blockValue)
                         return
@@ -154,7 +154,7 @@ class SCClient: NSObject {
     
     // Cancels observe directly, sending the previous message with an Observe-Option Value of 1. Only effective, if the previous message initiated a registration as observer with the respective server. To cancel observer indirectly (forget about the current state) call "closeTransmission()" or send another Message (this cleans up the old state automatically)
     func cancelObserve() {
-        let cancelMessage = SCMessage(code: SCCodeValue(classValue: 0, detailValue: 01), type: .NonConfirmable, payload: nil)
+        let cancelMessage = SCMessage(code: SCCodeValue(classValue: 0, detailValue: 01)!, type: .NonConfirmable, payload: nil)
         cancelMessage.token = messageInTransmission.token
         cancelMessage.options = messageInTransmission.options
         var cancelByte: UInt8 = 1
@@ -201,7 +201,7 @@ class SCClient: NSObject {
         sendPendingMessage()
         
         if retransmissionCounter < SCMessage.kMaxRetransmit {
-            var timeout = SCMessage.kAckTimeout * pow(2.0, Double(retransmissionCounter)) * (SCMessage.kAckRandomFactor - (Double(arc4random()) / Double(UINT32_MAX) % 0.5));
+            let timeout = SCMessage.kAckTimeout * pow(2.0, Double(retransmissionCounter)) * (SCMessage.kAckRandomFactor - (Double(arc4random()) / Double(UINT32_MAX) % 0.5));
             currentTransmitWait += timeout
             transmissionTimer = NSTimer(timeInterval: timeout, target: self, selector: "sendWithRentransmissionHandling", userInfo: nil, repeats: false)
             retransmissionCounter++
@@ -262,12 +262,12 @@ class SCClient: NSObject {
         if let block2opt = message.options[SCOption.Block2.rawValue] {
 
             if let blockData = block2opt.first {
-                var actualValue = UInt.fromData(blockData)
+                let actualValue = UInt.fromData(blockData)
                 if actualValue & 8 == 8 {
                     //more bit is set, request next block
-                    var blockMessage = SCMessage(code: messageInTransmission.code, type: messageInTransmission.type, payload: messageInTransmission.payload)
+                    let blockMessage = SCMessage(code: messageInTransmission.code, type: messageInTransmission.type, payload: messageInTransmission.payload)
                     blockMessage.options = messageInTransmission.options
-                    var newValue = (actualValue & ~8) + 16
+                    let newValue = (actualValue & ~8) + 16
                     var byteArray = newValue.toByteArray()
                     blockMessage.options[SCOption.Block2.rawValue] = [NSData(bytes: &byteArray, length: byteArray.count)]
                     sendCoAPMessage(blockMessage, hostName: messageInTransmission.hostName!, port: messageInTransmission.port!)
@@ -280,7 +280,7 @@ class SCClient: NSObject {
     }
     
     private func continueBlock1ForBlockNumber(block: Int, szx: UInt) {
-        var byteSize = pow(2, Double(szx) + 4)
+        let byteSize = pow(2, Double(szx) + 4)
         let blocksCount = ceil(Double(messageInTransmission.blockBody!.length) / byteSize)
         if block < Int(blocksCount) {
             var nextBlockLength: Int
@@ -299,7 +299,7 @@ class SCClient: NSObject {
     }
     
     private func sendBlock1MessageForCurrentContext(#payload: NSData, blockValue: UInt) {
-        var blockMessage = SCMessage(code: messageInTransmission.code, type: messageInTransmission.type, payload: payload)
+        let blockMessage = SCMessage(code: messageInTransmission.code, type: messageInTransmission.type, payload: payload)
         blockMessage.options = messageInTransmission.options
         blockMessage.blockBody = messageInTransmission.blockBody
         var byteArray = blockValue.toByteArray()
@@ -309,8 +309,8 @@ class SCClient: NSObject {
     }
     
     private func sendHttpMessageFromCoAPMessage(message: SCMessage) {
-        var urlRequest = message.toHttpUrlRequestWithUrl()
-        var urlString = "http://\(httpProxyingData!.hostName):\(httpProxyingData!.port)/\(message.hostName!):\(message.port!)"
+        let urlRequest = message.toHttpUrlRequestWithUrl()
+        let urlString = "http://\(httpProxyingData!.hostName):\(httpProxyingData!.port)/\(message.hostName!):\(message.port!)"
         urlRequest.URL = NSURL(string: urlString)
         urlRequest.timeoutInterval = SCMessage.kMaxTransmitWait
         urlRequest.cachePolicy = .UseProtocolCachePolicy
@@ -320,7 +320,7 @@ class SCClient: NSObject {
                 self.notifyDelegateWithErrorCode(.ProxyingError)
             }
             else {
-                var coapResponse = SCMessage.fromHttpUrlResponse(response as! NSHTTPURLResponse, data: data)
+                let coapResponse = SCMessage.fromHttpUrlResponse(response as! NSHTTPURLResponse, data: data)
                 coapResponse.timeStamp = NSDate()
                 
                 if self.cachingActive && self.messageInTransmission.code == SCCodeValue(classValue: 0, detailValue: 01) {

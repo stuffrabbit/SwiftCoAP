@@ -41,7 +41,7 @@ class ExampleViewController: UIViewController {
         if sender is UIButton {
             view.endEditing(true)
         }
-        var m = SCMessage(code: SCCodeValue(classValue: 0, detailValue: 01), type: .Confirmable, payload: "test".dataUsingEncoding(NSUTF8StringEncoding))
+        var m = SCMessage(code: SCCodeValue(classValue: 0, detailValue: 01)!, type: .Confirmable, payload: "test".dataUsingEncoding(NSUTF8StringEncoding))
         
         if let stringData = uriPathTextField.text.dataUsingEncoding(NSUTF8StringEncoding) {
             m.addOption(SCOption.UriPath.rawValue, data: stringData)
@@ -74,14 +74,14 @@ extension ExampleViewController: UITextFieldDelegate {
 extension ExampleViewController: SCClientDelegate {
     func swiftCoapClient(client: SCClient, didReceiveMessage message: SCMessage) {
         var payloadstring = ""
-        if var pay = message.payload {
-            if var string = NSString(data: pay, encoding:NSUTF8StringEncoding) {
+        if let pay = message.payload {
+            if let string = NSString(data: pay, encoding:NSUTF8StringEncoding) {
                 payloadstring = String(string)
             }
         }
-        var firstPartString = "Message received with type: \(message.type.shortString())\nwith code: \(message.code.toString()!) \nwith id: \(message.messageId)\nPayload: \(payloadstring)"
+        let firstPartString = "Message received with type: \(message.type.shortString())\nwith code: \(message.code.toString()) \nwith id: \(message.messageId)\nPayload: \(payloadstring)"
         var optString = "Options:\n"
-        for (key, valueArray) in message.options {
+        for (key, _) in message.options {
             var optName = "Unknown"
                 
             if let knownOpt = SCOption(rawValue: key) {

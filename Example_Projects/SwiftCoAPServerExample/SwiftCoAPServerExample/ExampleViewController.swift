@@ -57,11 +57,11 @@ extension ExampleViewController: SCServerDelegate {
     
     func swiftCoapServer(server: SCServer, didHandleRequestWithCode requestCode: SCCodeValue, forResource resource: SCResourceModel, withResponseCode responseCode: SCCodeValue) {
         tableView.reloadData()
-        print("Did Handle Request with request code: \(requestCode.toString()!) for resource \(resource.name) with response code: \(responseCode.toString()!)")
+        print("Did Handle Request with request code: \(requestCode.toString()) for resource \(resource.name) with response code: \(responseCode.toString())")
     }
     
     func swiftCoapServer(server: SCServer, didRejectRequestWithCode requestCode: SCCodeValue, forPath path: String, withResponseCode responseCode: SCCodeValue) {
-        print("Did Reject Request with request code: \(requestCode.toString()!) for resource path \(path) with response code: \(responseCode.toString()!)")
+        print("Did Reject Request with request code: \(requestCode.toString()) for resource path \(path) with response code: \(responseCode.toString())")
     }
     
     func swiftCoapServer(server: SCServer, didSendSeparateResponseMessage: SCMessage, number: Int) {

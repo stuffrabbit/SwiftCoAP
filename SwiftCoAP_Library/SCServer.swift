@@ -153,7 +153,7 @@ class SCServer: NSObject {
         if var valueArray = registeredObserverForResource[resource] {
             for var i = 0; i < valueArray.count; i++ {
                 let (token, address, sequenceNumber, prefferredBlock2SZX) = valueArray[i]
-                let notification = SCMessage(code: SCCodeValue(classValue: 2, detailValue: 05), type: .Confirmable, payload: resource.dataRepresentation)
+                let notification = SCMessage(code: SCCodeValue(classValue: 2, detailValue: 05)!, type: .Confirmable, payload: resource.dataRepresentation)
                 notification.token = token
                 notification.messageId = UInt16(arc4random_uniform(0xFFFF) &+ 1)
                 notification.addressData = address
@@ -532,7 +532,7 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
             
             if message.code == SCCodeValue(classValue: 0, detailValue: 00) || message.code.classValue >= 1 {
                 if message.type == .Confirmable || message.type == .NonConfirmable {
-                    sendMessageWithType(.Reset, code: SCCodeValue(classValue: 0, detailValue: 00), payload: nil, messageId: message.messageId, addressData: address)
+                    sendMessageWithType(.Reset, code: SCCodeValue(classValue: 0, detailValue: 00)!, payload: nil, messageId: message.messageId, addressData: address)
                 }
                 return
             }
@@ -550,7 +550,7 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                     }
                 }
                 if let wellKnownData = wellKnownString.dataUsingEncoding(NSUTF8StringEncoding) {
-                    let wellKnownResponseMessage = SCMessage(code: SCCodeValue(classValue: 2, detailValue: 05), type: resultType, payload: wellKnownData)
+                    let wellKnownResponseMessage = SCMessage(code: SCCodeValue(classValue: 2, detailValue: 05)!, type: resultType, payload: wellKnownData)
                     wellKnownResponseMessage.messageId = message.messageId
                     wellKnownResponseMessage.token = message.token
                     wellKnownResponseMessage.addressData = address
@@ -560,7 +560,6 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                     wellKnownResponseMessage.addOption(SCOption.ContentFormat.rawValue, data: NSData(bytes: &contentValue, length: 1))
                     handleBlock2ServerRequirementsForMessage(wellKnownResponseMessage, preferredBlockSZX: nil)
                     sendMessage(wellKnownResponseMessage)
-                    //TODO WEll Known Checken
                     return
                 }
             }
@@ -577,7 +576,7 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                 var resultTuple: (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!)?
                 
                 switch message.code {
-                case SCCodeValue(classValue: 0, detailValue: 01) where resultResource.allowedRoutes & SCAllowedRoute.Get.rawValue == SCAllowedRoute.Get.rawValue:
+                case SCCodeValue(classValue: 0, detailValue: 01)! where resultResource.allowedRoutes & SCAllowedRoute.Get.rawValue == SCAllowedRoute.Get.rawValue:
                     //ETAG verification
                     if resultResource.etag != nil, let etagValueArray = message.options[SCOption.Etag.rawValue] {
                         for etagData in etagValueArray {
@@ -591,15 +590,15 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                     
                     if resultResource.willHandleDataAsynchronouslyForGet(queryDictionary: message.uriQueryDictionary(), options: message.options, originalMessage: message) {
                         if message.type == .Confirmable {
-                            sendMessageWithType(.Acknowledgement, code: SCCodeValue(classValue: 0, detailValue: 00), payload: nil, messageId: message.messageId, addressData: address)
+                            sendMessageWithType(.Acknowledgement, code: SCCodeValue(classValue: 0, detailValue: 00)!, payload: nil, messageId: message.messageId, addressData: address)
                         }
-                        delegate?.swiftCoapServer(self, didHandleRequestWithCode: message.code, forResource: resultResource, withResponseCode: SCCodeValue(classValue: 0, detailValue: 00))
+                        delegate?.swiftCoapServer(self, didHandleRequestWithCode: message.code, forResource: resultResource, withResponseCode: SCCodeValue(classValue: 0, detailValue: 00)!)
                         return
                     }
                     else if let (statusCode, payloadData, contentFormat) = resultResource.dataForGet(queryDictionary: message.uriQueryDictionary(), options: message.options) {
                         resultTuple = (statusCode, payloadData, contentFormat, nil)
                     }
-                case SCCodeValue(classValue: 0, detailValue: 02) where resultResource.allowedRoutes & SCAllowedRoute.Post.rawValue == SCAllowedRoute.Post.rawValue:
+                case SCCodeValue(classValue: 0, detailValue: 02)! where resultResource.allowedRoutes & SCAllowedRoute.Post.rawValue == SCAllowedRoute.Post.rawValue:
                     if let payload = retrievePayloadAfterBlock1HandlingWithMessage(message, resultResource: resultResource) {
                         if let tuple = resultResource.dataForPost(queryDictionary: message.uriQueryDictionary(), options: message.options, requestData: payload) {
                             resultTuple = tuple
@@ -608,7 +607,7 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                     else {
                         return
                     }
-                case SCCodeValue(classValue: 0, detailValue: 03) where resultResource.allowedRoutes & SCAllowedRoute.Put.rawValue == SCAllowedRoute.Put.rawValue:
+                case SCCodeValue(classValue: 0, detailValue: 03)! where resultResource.allowedRoutes & SCAllowedRoute.Put.rawValue == SCAllowedRoute.Put.rawValue:
                     if let payload = retrievePayloadAfterBlock1HandlingWithMessage(message, resultResource: resultResource) {
                         if let tuple = resultResource.dataForPut(queryDictionary: message.uriQueryDictionary(), options: message.options, requestData: payload) {
                             resultTuple = tuple
@@ -617,7 +616,7 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                     else {
                         return
                     }
-                case SCCodeValue(classValue: 0, detailValue: 04) where resultResource.allowedRoutes & SCAllowedRoute.Delete.rawValue == SCAllowedRoute.Delete.rawValue:
+                case SCCodeValue(classValue: 0, detailValue: 04)! where resultResource.allowedRoutes & SCAllowedRoute.Delete.rawValue == SCAllowedRoute.Delete.rawValue:
                     if let (statusCode, payloadData, contentFormat) = resultResource.dataForDelete(queryDictionary: message.uriQueryDictionary(), options: message.options) {
                         resultTuple = (statusCode, payloadData, contentFormat, nil)
                     }
@@ -635,7 +634,7 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                 }
             }
             else {
-                respondWithErrorCode(SCCodeValue(classValue: 4, detailValue: 04), diagnosticPayload: "Not Found".dataUsingEncoding(NSUTF8StringEncoding), forMessage: message, withType: resultType)
+                respondWithErrorCode(SCCodeValue(classValue: 4, detailValue: 04)!, diagnosticPayload: "Not Found".dataUsingEncoding(NSUTF8StringEncoding), forMessage: message, withType: resultType)
             }
         }
     }

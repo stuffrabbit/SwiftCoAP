@@ -24,7 +24,7 @@ enum SCType: Int {
         case .Acknowledgement:
             return "ACK"
         case .Reset:
-            return "RES"
+            return "RST"
         }
     }
     
@@ -36,7 +36,7 @@ enum SCType: Int {
             return .NonConfirmable
         case "ACK":
             return .Acknowledgement
-        case "RES":
+        case "RST":
             return .Reset
         default:
             return nil
@@ -141,6 +141,19 @@ enum SCOption: Int {
     func isNoCacheKey() -> Bool {
         return SCOption.isNumberNoCacheKey(self.rawValue)
     }
+
+    static func isNumberRepeatable(optionNo: Int) -> Bool {
+        switch optionNo {
+        case SCOption.IfMatch.rawValue, SCOption.Etag.rawValue, SCOption.LocationPath.rawValue, SCOption.UriPath.rawValue, SCOption.UriQuery.rawValue, SCOption.LocationQuery.rawValue:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    func isRepeatable() -> Bool {
+        return SCOption.isNumberRepeatable(self.rawValue)
+    }
     
     func format() -> Format {
         switch self {
@@ -193,6 +206,71 @@ enum SCCodeSample: Int {
     func codeValue() -> SCCodeValue! {
         return SCCodeValue.fromCodeSample(self)
     }
+    
+    func toString() -> String {
+        switch self {
+        case .Empty:
+            return "Empty"
+        case .Get:
+            return "Get"
+        case .Post:
+            return "Post"
+        case .Put:
+            return "Put"
+        case .Delete:
+            return "Delete"
+        case .Created:
+            return "Created"
+        case .Deleted:
+            return "Deleted"
+        case .Valid:
+            return "Valid"
+        case .Changed:
+            return "Changed"
+        case .Content:
+            return "Content"
+        case .Continue:
+            return "Continue"
+        case .BadRequest:
+            return "Bad Request"
+        case .Unauthorized:
+            return "Unauthorized"
+        case .BadOption:
+            return "Bad Option"
+        case .Forbidden:
+            return "Forbidden"
+        case .NotFound:
+            return "Not Found"
+        case .MethodNotAllowed:
+            return "Method Not Allowed"
+        case .NotAcceptable:
+            return "Not Acceptable"
+        case .RequestEntityIncomplete:
+            return "Request Entity Incomplete"
+        case .PreconditionFailed:
+            return "Precondition Failed"
+        case .RequestEntityTooLarge:
+            return "Request Entity Too Large"
+        case .UnsupportedContentFormat:
+            return "Unsupported Content Format"
+        case .InternalServerError:
+            return "Internal Server Error"
+        case .NotImplemented:
+            return "Not Implemented"
+        case .BadGateway:
+            return "Bad Gateway"
+        case .ServiceUnavailable:
+            return "Service Unavailable"
+        case .GatewayTimeout:
+            return "Gateway Timeout"
+        case .ProxyingNotSupported:
+            return "Proxying Not Supported"
+        }
+    }
+    
+    static func stringFromCodeValue(codeValue: SCCodeValue) -> String? {
+        return codeValue.toCodeSample()?.toString()
+    }
 }
 
 
@@ -226,44 +304,49 @@ struct SCCodeValue: Equatable {
     let classValue: UInt8
     let detailValue: UInt8
     
-    func toRawValue() -> UInt8? {
+    init(rawValue: UInt8) {
+        let firstBits: UInt8 = rawValue >> 5
+        let lastBits: UInt8 = rawValue & 0b00011111
+        self.classValue = firstBits
+        self.detailValue = lastBits
+    }
+    
+    //classValue must not be larger than 7; detailValue must not be larger than 31
+    init?(classValue: UInt8, detailValue: UInt8) {
         if classValue > 0b111 || detailValue > 0b11111 { return nil }
-        
+
+        self.classValue = classValue
+        self.detailValue = detailValue
+    }
+    
+    func toRawValue() -> UInt8 {
         return classValue << 5 + detailValue
     }
     
-    static func fromRawValue(value: UInt8) -> SCCodeValue {
-        let firstBits: UInt8 = value >> 5
-        let lastBits: UInt8 = value & 0b00011111
-        return SCCodeValue(classValue: firstBits, detailValue: lastBits)
-    }
-    
     func toCodeSample() -> SCCodeSample? {
-        if let raw = toRawValue(), code = SCCodeSample(rawValue: Int(raw)) {
+        if let code = SCCodeSample(rawValue: Int(toRawValue())) {
             return code
         }
         return nil
     }
     
     static func fromCodeSample(code: SCCodeSample) -> SCCodeValue {
-        return fromRawValue(UInt8(code.rawValue))
+        return SCCodeValue(rawValue: UInt8(code.rawValue))
     }
     
-    func toString() -> String? {
-        if classValue > 0b111 || detailValue > 0b11111 { return nil }
-        
+    func toString() -> String {
         return String(format: "%i.%02d", classValue, detailValue)
     }
     
     func requestString() -> String? {
         switch self {
-        case SCCodeValue(classValue: 0, detailValue: 01):
+        case SCCodeValue(classValue: 0, detailValue: 01)!:
             return "GET"
-        case SCCodeValue(classValue: 0, detailValue: 02):
+        case SCCodeValue(classValue: 0, detailValue: 02)!:
             return "POST"
-        case SCCodeValue(classValue: 0, detailValue: 03):
+        case SCCodeValue(classValue: 0, detailValue: 03)!:
             return "PUT"
-        case SCCodeValue(classValue: 0, detailValue: 04):
+        case SCCodeValue(classValue: 0, detailValue: 04)!:
             return "DELETE"
         default:
             return nil
@@ -364,7 +447,7 @@ class SCMessage: NSObject {
     
     //INTERNAL PROPERTIES (allowed to modify)
     
-    var code: SCCodeValue = SCCodeValue(classValue: 0, detailValue: 0) //Code value is Empty by default
+    var code: SCCodeValue = SCCodeValue(classValue: 0, detailValue: 0)! //Code value is Empty by default
     var type: SCType = .Confirmable //Type is CON by default
     var payload: NSData? //Add a payload (optional)
     var blockBody: NSData? //Helper for Block1 tranmission. Used by SCClient, modification has no effect
@@ -467,16 +550,11 @@ class SCMessage: NSObject {
         if tokenLength > 8 {
             return nil
         }
-        
-        if let codeRawValue = code.toRawValue() {
-            let firstByte: UInt8 = UInt8((SCMessage.kCoapVersion << 6) | (type.rawValue << 4) | tokenLength)
-            let actualMessageId: UInt16 = messageId ?? 0
-            var byteArray: [UInt8] = [firstByte, codeRawValue, UInt8(actualMessageId >> 8), UInt8(actualMessageId & 0xFF)]
-            resultData = NSMutableData(bytes: &byteArray, length: byteArray.count)
-        }
-        else {
-            return nil //Format Error
-        }
+        let codeRawValue = code.toRawValue()
+        let firstByte: UInt8 = UInt8((SCMessage.kCoapVersion << 6) | (type.rawValue << 4) | tokenLength)
+        let actualMessageId: UInt16 = messageId ?? 0
+        var byteArray: [UInt8] = [firstByte, codeRawValue, UInt8(actualMessageId >> 8), UInt8(actualMessageId & 0xFF)]
+        resultData = NSMutableData(bytes: &byteArray, length: byteArray.count)
         
         if tokenLength > 0 {
             var tokenByteArray = [UInt8]()
@@ -570,7 +648,7 @@ class SCMessage: NSObject {
         //Assign header values to CoAP Message
         let message = SCMessage()
         message.type = type!
-        message.code = SCCodeValue.fromRawValue(headerBytes[1])
+        message.code = SCCodeValue(rawValue: headerBytes[1])
         message.messageId = (UInt16(headerBytes[2]) << 8) + UInt16(headerBytes[3])
         
         if tokenLenght > 0 {
@@ -678,7 +756,7 @@ class SCMessage: NSObject {
     static func fromHttpUrlResponse(urlResponse: NSHTTPURLResponse, data: NSData!) -> SCMessage {
         let message = SCMessage()
         message.payload = data
-        message.code = SCCodeValue.fromRawValue(UInt8(urlResponse.statusCode & 0xff))
+        message.code = SCCodeValue(rawValue: UInt8(urlResponse.statusCode & 0xff))
         if let typeString = urlResponse.allHeaderFields[SCMessage.kProxyCoAPTypeKey] as? String, type = SCType.fromShortString(typeString) {
             message.type = type
         }

@@ -41,7 +41,7 @@ class ExampleViewController: UIViewController {
         if sender is UIButton {
             view.endEditing(true)
         }
-        let m = SCMessage(code: SCCodeValue(classValue: 0, detailValue: 01), type: .Confirmable, payload: "test".dataUsingEncoding(NSUTF8StringEncoding))
+        let m = SCMessage(code: SCCodeValue(classValue: 0, detailValue: 01)!, type: .Confirmable, payload: "test".dataUsingEncoding(NSUTF8StringEncoding))
         
         if let stringData = uriPathTextField.text?.dataUsingEncoding(NSUTF8StringEncoding) {
             m.addOption(SCOption.UriPath.rawValue, data: stringData)
@@ -79,7 +79,7 @@ extension ExampleViewController: SCClientDelegate {
                 payloadstring = String(string)
             }
         }
-        let firstPartString = "Message received with type: \(message.type.shortString())\nwith code: \(message.code.toString()!) \nwith id: \(message.messageId)\nPayload: \(payloadstring)"
+        let firstPartString = "Message received with type: \(message.type.shortString())\nwith code: \(message.code.toString()) \nwith id: \(message.messageId)\nPayload: \(payloadstring)"
         var optString = "Options:\n"
         for (key, _) in message.options {
             var optName = "Unknown"

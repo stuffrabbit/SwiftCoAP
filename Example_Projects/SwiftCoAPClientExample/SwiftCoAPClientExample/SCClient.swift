@@ -235,7 +235,7 @@ class SCClient: NSObject {
         udpSocket = GCDAsyncUdpSocket(delegate: self, delegateQueue: dispatch_get_main_queue())
         
         var error: NSError?
-        if !udpSocket!.bindToPort(5683, error: &error) {
+        if !udpSocket!.bindToPort(0, error: &error) {
             return false
         }
         
@@ -259,22 +259,19 @@ class SCClient: NSObject {
     }
     
     private func handleBlock2WithMessage(message: SCMessage) {
-        if let block2opt = message.options[SCOption.Block2.rawValue] {
-
-            if let blockData = block2opt.first {
-                let actualValue = UInt.fromData(blockData)
-                if actualValue & 8 == 8 {
-                    //more bit is set, request next block
-                    let blockMessage = SCMessage(code: messageInTransmission.code, type: messageInTransmission.type, payload: messageInTransmission.payload)
-                    blockMessage.options = messageInTransmission.options
-                    let newValue = (actualValue & ~8) + 16
-                    var byteArray = newValue.toByteArray()
-                    blockMessage.options[SCOption.Block2.rawValue] = [NSData(bytes: &byteArray, length: byteArray.count)]
-                    sendCoAPMessage(blockMessage, hostName: messageInTransmission.hostName!, port: messageInTransmission.port!)
-                }
-                else {
-                    isMessageInTransmission = false
-                }
+        if let block2opt = message.options[SCOption.Block2.rawValue], blockData = block2opt.first {
+            let actualValue = UInt.fromData(blockData)
+            if actualValue & 8 == 8 {
+                //more bit is set, request next block
+                let blockMessage = SCMessage(code: messageInTransmission.code, type: messageInTransmission.type, payload: messageInTransmission.payload)
+                blockMessage.options = messageInTransmission.options
+                let newValue = (actualValue & ~8) + 16
+                var byteArray = newValue.toByteArray()
+                blockMessage.options[SCOption.Block2.rawValue] = [NSData(bytes: &byteArray, length: byteArray.count)]
+                sendCoAPMessage(blockMessage, hostName: messageInTransmission.hostName!, port: messageInTransmission.port!)
+            }
+            else {
+                isMessageInTransmission = false
             }
         }
     }
@@ -415,5 +412,7 @@ extension SCClient: GCDAsyncUdpSocketDelegate {
     
     func udpSocket(sock: GCDAsyncUdpSocket!, didNotSendDataWithTag tag: Int, dueToError error: NSError!) {
         notifyDelegateWithErrorCode(.UdpSocketSendError)
+        transmissionTimer?.invalidate()
+        transmissionTimer = nil
     }
 }

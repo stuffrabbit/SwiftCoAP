@@ -71,7 +71,7 @@ enum SCOption: Int {
     
     static let allValues = [IfMatch, UriHost, Etag, IfNoneMatch, Observe, UriPort, LocationPath, UriPath, ContentFormat, MaxAge, UriQuery, Accept, LocationQuery, Block2, Block1, Size2, ProxyUri, ProxyScheme, Size1]
     
-    enum Format {
+    enum Format: Int {
         case Empty, Opaque, UInt, String
     }
     
@@ -165,6 +165,26 @@ enum SCOption: Int {
             return .String
         default:
             return .UInt
+        }
+    }
+    func dataForValueString(valueString: String) -> NSData? {
+        return SCOption.dataForOptionValueString(valueString, format: format())
+    }
+    
+    static func dataForOptionValueString(valueString: String, format: Format) -> NSData? {
+        switch format {
+        case .Empty:
+            return nil
+        case .Opaque:
+            return NSData.fromOpaqueString(valueString)
+        case .String:
+            return valueString.dataUsingEncoding(NSUTF8StringEncoding)
+        case .UInt:
+            if let valueInt = valueString.toInt() {
+                var byteArray = UInt(valueInt).toByteArray()
+                return NSData(bytes: &byteArray, length: byteArray.count)
+            }
+            return nil
         }
     }
 }
@@ -286,12 +306,31 @@ enum SCContentFormat: UInt {
     case JSON = 50
     case CBOR = 60
     
-    func needsStringConversion() -> Bool {
+    func needsStringUTF8Conversion() -> Bool {
         switch self {
         case .OctetStream, .EXI, .CBOR:
-            return true
-        default:
             return false
+        default:
+            return true
+        }
+    }
+    
+    func toString() -> String {
+        switch self {
+        case .Plain:
+            return "Plain"
+        case .LinkFormat:
+            return "Link Format"
+        case .XML:
+            return "XML"
+        case .OctetStream:
+            return "Octet Stream"
+        case .EXI:
+            return "EXI"
+        case .JSON:
+            return "JSON"
+        case .CBOR:
+            return "CBOR"
         }
     }
 }
@@ -381,6 +420,30 @@ public extension UInt {
             actualValue += UInt(valueBytes[i]) << ((UInt(valueBytes.count) - UInt(i + 1)) * 8)
         }
         return actualValue
+    }
+}
+
+//MARK:
+//MARK: String Extension
+
+extension String {
+    static func toHexFromData(data: NSData) -> String {
+        var string = data.description.stringByReplacingOccurrencesOfString(" ", withString: "")
+        return "0x" + string.substringWithRange(Range<String.Index>(start: advance(string.startIndex, 1), end: advance(string.endIndex, -1)))
+    }
+}
+
+//MARK:
+//MARK: NSData Extension
+
+extension NSData {
+    static func fromOpaqueString(string: String) -> NSData? {
+        let comps = string.componentsSeparatedByString("x")
+        if let lastString = comps.last, lastInt = lastString.toInt(), number = String(lastInt, radix:16).toInt() where comps.count <= 2 {
+            var byteArray = UInt(number).toByteArray()
+            return NSData(bytes: &byteArray, length: byteArray.count)
+        }
+        return nil
     }
 }
 
@@ -571,10 +634,10 @@ class SCMessage: NSObject {
         
         var previousDelta = 0
         for (key, valueArray) in sortedOptions {
-            var optionDelta = key - previousDelta
-            previousDelta += optionDelta
-            
             for value in valueArray {
+                var optionDelta = key - previousDelta
+                previousDelta += optionDelta
+                
                 var optionFirstByte: UInt8
                 var extendedDelta: NSData?
                 var extendedLength: NSData?
@@ -833,5 +896,26 @@ class SCMessage: NSObject {
             return (resultPathDataArray, resultQueryDataArray)
         }
         return nil
+    }
+    
+    func inferredContentFormat() -> SCContentFormat {
+        if let contentFormatArray = options[SCOption.ContentFormat.rawValue], contentFormatData = contentFormatArray.first, contentFormat = SCContentFormat(rawValue: UInt.fromData(contentFormatData)) {
+            return contentFormat
+        }
+        return .Plain
+    }
+    
+    func payloadRepresentationString() -> String {
+        if let payloadData = self.payload {
+            return SCMessage.payloadRepresentationStringForData(payloadData, contentFormat: inferredContentFormat())
+        }
+        return ""
+    }
+    
+    static func payloadRepresentationStringForData(data: NSData, contentFormat: SCContentFormat) -> String {
+        if contentFormat.needsStringUTF8Conversion() {
+            return (NSString(data: data, encoding: NSUTF8StringEncoding) as? String) ?? "Format Error"
+        }
+        return String.toHexFromData(data)
     }
 }

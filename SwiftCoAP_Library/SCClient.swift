@@ -54,7 +54,7 @@ enum SCClientErrorCode: Int {
 //MARK: SC Client IMPLEMENTATION
 
 class SCClient: NSObject {
-
+    
     //MARK: Constants and Properties
     
     //CONSTANTS
@@ -94,12 +94,12 @@ class SCClient: NSObject {
     
     func sendCoAPMessage(message: SCMessage, hostName: String, port: UInt16) {
         currentMessageId = (currentMessageId % 0xFFFF) + 1
-
+        
         message.hostName = hostName
         message.port = port
         message.messageId = currentMessageId
         message.timeStamp = NSDate()
-
+        
         messageInTransmission = message
         
         if sendToken {
@@ -196,7 +196,7 @@ class SCClient: NSObject {
     }
     
     //Actually PRIVATE! Do not call from outside. Has to be internally visible as NSTimer won't find it otherwise
-
+    
     func sendWithRentransmissionHandling() {
         sendPendingMessage()
         
@@ -235,7 +235,7 @@ class SCClient: NSObject {
         udpSocket = GCDAsyncUdpSocket(delegate: self, delegateQueue: dispatch_get_main_queue())
         
         do {
-            try udpSocket!.bindToPort(5683)
+            try udpSocket!.bindToPort(0)
             try udpSocket!.beginReceiving()
         } catch {
             return false
@@ -249,7 +249,7 @@ class SCClient: NSObject {
         emptyMessage.type = type;
         emptyMessage.messageId = messageId
         udpSocket?.sendData(emptyMessage.toData()!, toAddress: addressData, withTimeout: 0, tag: udpSocketTag)
-
+        
         udpSocketTag = (udpSocketTag % Int.max) + 1
     }
     
@@ -258,22 +258,19 @@ class SCClient: NSObject {
     }
     
     private func handleBlock2WithMessage(message: SCMessage) {
-        if let block2opt = message.options[SCOption.Block2.rawValue] {
-
-            if let blockData = block2opt.first {
-                let actualValue = UInt.fromData(blockData)
-                if actualValue & 8 == 8 {
-                    //more bit is set, request next block
-                    let blockMessage = SCMessage(code: messageInTransmission.code, type: messageInTransmission.type, payload: messageInTransmission.payload)
-                    blockMessage.options = messageInTransmission.options
-                    let newValue = (actualValue & ~8) + 16
-                    var byteArray = newValue.toByteArray()
-                    blockMessage.options[SCOption.Block2.rawValue] = [NSData(bytes: &byteArray, length: byteArray.count)]
-                    sendCoAPMessage(blockMessage, hostName: messageInTransmission.hostName!, port: messageInTransmission.port!)
-                }
-                else {
-                    isMessageInTransmission = false
-                }
+        if let block2opt = message.options[SCOption.Block2.rawValue], blockData = block2opt.first {
+            let actualValue = UInt.fromData(blockData)
+            if actualValue & 8 == 8 {
+                //more bit is set, request next block
+                let blockMessage = SCMessage(code: messageInTransmission.code, type: messageInTransmission.type, payload: messageInTransmission.payload)
+                blockMessage.options = messageInTransmission.options
+                let newValue = (actualValue & ~8) + 16
+                var byteArray = newValue.toByteArray()
+                blockMessage.options[SCOption.Block2.rawValue] = [NSData(bytes: &byteArray, length: byteArray.count)]
+                sendCoAPMessage(blockMessage, hostName: messageInTransmission.hostName!, port: messageInTransmission.port!)
+            }
+            else {
+                isMessageInTransmission = false
             }
         }
     }
@@ -313,7 +310,7 @@ class SCClient: NSObject {
         urlRequest.URL = NSURL(string: urlString)
         urlRequest.timeoutInterval = SCMessage.kMaxTransmitWait
         urlRequest.cachePolicy = .UseProtocolCachePolicy
-
+        
         NSURLConnection.sendAsynchronousRequest(urlRequest, queue: NSOperationQueue.mainQueue()) { (response, data, error) -> Void in
             if error != nil {
                 self.notifyDelegateWithErrorCode(.ProxyingError)
@@ -353,10 +350,10 @@ extension SCClient: GCDAsyncUdpSocketDelegate {
                 }
                 return
             }
-
+            
             //Set timestamp
             message.timeStamp = NSDate()
-
+            
             //Handle Caching, Separate, etc
             if cachingActive && messageInTransmission.code == SCCodeValue(classValue: 0, detailValue: 01) {
                 cachedMessagePairs[messageInTransmission] = SCMessage.copyFromMessage(message)
@@ -366,10 +363,10 @@ extension SCClient: GCDAsyncUdpSocketDelegate {
             if let observeValueArray = message.options[SCOption.Observe.rawValue], observeValue = observeValueArray.first {
                 let currentNumber  = UInt.fromData(observeValue)
                 if recentNotificationInfo == nil ||
-                   (recentNotificationInfo.1 < currentNumber && currentNumber - recentNotificationInfo.1 < kMaxObserveOptionValue) ||
-                   (recentNotificationInfo.1 > currentNumber && recentNotificationInfo.1 - currentNumber > kMaxObserveOptionValue) ||
-                   (recentNotificationInfo.0 .compare(message.timeStamp!.dateByAddingTimeInterval(128)) == .OrderedAscending) {
-                    recentNotificationInfo = (message.timeStamp!, currentNumber)
+                    (recentNotificationInfo.1 < currentNumber && currentNumber - recentNotificationInfo.1 < kMaxObserveOptionValue) ||
+                    (recentNotificationInfo.1 > currentNumber && recentNotificationInfo.1 - currentNumber > kMaxObserveOptionValue) ||
+                    (recentNotificationInfo.0 .compare(message.timeStamp!.dateByAddingTimeInterval(128)) == .OrderedAscending) {
+                        recentNotificationInfo = (message.timeStamp!, currentNumber)
                 }
                 else {
                     return
@@ -396,7 +393,7 @@ extension SCClient: GCDAsyncUdpSocketDelegate {
                     continueBlock1ForBlockNumber(Int(actualValue) + blockOffset, szx: serverSZX)
                 }
             }
-
+            
             //Further Operations
             if message.type == .Confirmable {
                 sendEmptyMessageWithType(.Acknowledgement, messageId: message.messageId, addressData: address)
@@ -413,5 +410,7 @@ extension SCClient: GCDAsyncUdpSocketDelegate {
     
     func udpSocket(sock: GCDAsyncUdpSocket!, didNotSendDataWithTag tag: Int, dueToError error: NSError!) {
         notifyDelegateWithErrorCode(.UdpSocketSendError)
+        transmissionTimer?.invalidate()
+        transmissionTimer = nil
     }
 }

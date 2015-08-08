@@ -71,7 +71,7 @@ enum SCOption: Int {
     
     static let allValues = [IfMatch, UriHost, Etag, IfNoneMatch, Observe, UriPort, LocationPath, UriPath, ContentFormat, MaxAge, UriQuery, Accept, LocationQuery, Block2, Block1, Size2, ProxyUri, ProxyScheme, Size1]
     
-    enum Format {
+    enum Format: Int {
         case Empty, Opaque, UInt, String
     }
     
@@ -141,7 +141,7 @@ enum SCOption: Int {
     func isNoCacheKey() -> Bool {
         return SCOption.isNumberNoCacheKey(self.rawValue)
     }
-
+    
     static func isNumberRepeatable(optionNo: Int) -> Bool {
         switch optionNo {
         case SCOption.IfMatch.rawValue, SCOption.Etag.rawValue, SCOption.LocationPath.rawValue, SCOption.UriPath.rawValue, SCOption.UriQuery.rawValue, SCOption.LocationQuery.rawValue:
@@ -165,6 +165,27 @@ enum SCOption: Int {
             return .String
         default:
             return .UInt
+        }
+    }
+    
+    func dataForValueString(valueString: String) -> NSData? {
+        return SCOption.dataForOptionValueString(valueString, format: format())
+    }
+    
+    static func dataForOptionValueString(valueString: String, format: Format) -> NSData? {
+        switch format {
+        case .Empty:
+            return nil
+        case .Opaque:
+            return NSData.fromOpaqueString(valueString)
+        case .String:
+            return valueString.dataUsingEncoding(NSUTF8StringEncoding)
+        case .UInt:
+            if let number = UInt(valueString) {
+                var byteArray = number.toByteArray()
+                return NSData(bytes: &byteArray, length: byteArray.count)
+            }
+            return nil
         }
     }
 }
@@ -286,12 +307,31 @@ enum SCContentFormat: UInt {
     case JSON = 50
     case CBOR = 60
     
-    func needsStringConversion() -> Bool {
+    func needsStringUTF8Conversion() -> Bool {
         switch self {
         case .OctetStream, .EXI, .CBOR:
-            return true
-        default:
             return false
+        default:
+            return true
+        }
+    }
+    
+    func toString() -> String {
+        switch self {
+        case .Plain:
+            return "Plain"
+        case .LinkFormat:
+            return "Link Format"
+        case .XML:
+            return "XML"
+        case .OctetStream:
+            return "Octet Stream"
+        case .EXI:
+            return "EXI"
+        case .JSON:
+            return "JSON"
+        case .CBOR:
+            return "CBOR"
         }
     }
 }
@@ -314,7 +354,7 @@ struct SCCodeValue: Equatable {
     //classValue must not be larger than 7; detailValue must not be larger than 31
     init?(classValue: UInt8, detailValue: UInt8) {
         if classValue > 0b111 || detailValue > 0b11111 { return nil }
-
+        
         self.classValue = classValue
         self.detailValue = detailValue
     }
@@ -381,6 +421,30 @@ public extension UInt {
             actualValue += UInt(valueBytes[i]) << ((UInt(valueBytes.count) - UInt(i + 1)) * 8)
         }
         return actualValue
+    }
+}
+
+//MARK:
+//MARK: String Extension
+
+extension String {
+    static func toHexFromData(data: NSData) -> String {
+        var string = data.description.stringByReplacingOccurrencesOfString(" ", withString: "")
+        return "0x" + string.substringWithRange(Range<String.Index>(start: advance(string.startIndex, 1), end: advance(string.endIndex, -1)))
+    }
+}
+
+//MARK:
+//MARK: NSData Extension
+
+extension NSData {
+    static func fromOpaqueString(string: String) -> NSData? {
+        let comps = string.componentsSeparatedByString("x")
+        if let lastString = comps.last, number = UInt(lastString, radix:16) where comps.count <= 2 {
+            var byteArray = number.toByteArray()
+            return NSData(bytes: &byteArray, length: byteArray.count)
+        }
+        return nil
     }
 }
 
@@ -570,10 +634,10 @@ class SCMessage: NSObject {
         
         var previousDelta = 0
         for (key, valueArray) in sortedOptions {
-            let optionDelta = key - previousDelta
-            previousDelta += optionDelta
-            
             for value in valueArray {
+                let optionDelta = key - previousDelta
+                previousDelta += optionDelta
+                
                 var optionFirstByte: UInt8
                 var extendedDelta: NSData?
                 var extendedLength: NSData?
@@ -593,7 +657,6 @@ class SCMessage: NSObject {
                 else {
                     optionFirstByte = UInt8(optionDelta) << 4
                 }
-                
                 
                 if value.length >= Int(kOptionTwoBytesExtraValue) + 0xFF {
                     optionFirstByte += kOptionTwoBytesExtraValue
@@ -835,5 +898,23 @@ class SCMessage: NSObject {
             return (resultPathDataArray, resultQueryDataArray)
         }
         return nil
+    }
+    
+    func inferredContentFormat() -> SCContentFormat {
+        guard let contentFormatArray = options[SCOption.ContentFormat.rawValue], contentFormatData = contentFormatArray.first, contentFormat = SCContentFormat(rawValue: UInt.fromData(contentFormatData)) else { return .Plain }
+        return contentFormat
+    }
+    
+    func payloadRepresentationString() -> String {
+        guard let payloadData = self.payload else { return "" }
+        
+        return SCMessage.payloadRepresentationStringForData(payloadData, contentFormat: inferredContentFormat())
+    }
+    
+    static func payloadRepresentationStringForData(data: NSData, contentFormat: SCContentFormat) -> String {
+        if contentFormat.needsStringUTF8Conversion() {
+            return (NSString(data: data, encoding: NSUTF8StringEncoding) as? String) ?? "Format Error"
+        }
+        return String.toHexFromData(data)
     }
 }

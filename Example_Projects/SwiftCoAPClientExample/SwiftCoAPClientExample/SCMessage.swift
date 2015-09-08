@@ -28,6 +28,19 @@ enum SCType: Int {
         }
     }
     
+    func longString() -> String {
+        switch self {
+        case .Confirmable:
+            return "Confirmable"
+        case .NonConfirmable:
+            return "Non Confirmable"
+        case .Acknowledgement:
+            return "Acknowledgement"
+        case .Reset:
+            return "Reset"
+        }
+    }
+    
     static func fromShortString(string: String) -> SCType? {
         switch string.uppercaseString {
         case "CON":
@@ -186,6 +199,32 @@ enum SCOption: Int {
                 return NSData(bytes: &byteArray, length: byteArray.count)
             }
             return nil
+        }
+    }
+    
+    func displayStringForData(data: NSData?) -> String {
+        return SCOption.displayStringForFormat(format(), data: data)
+    }
+    
+    static func displayStringForFormat(format: Format, data: NSData?) -> String {
+        switch format {
+        case .Empty:
+            return "< Empty >"
+        case .Opaque:
+            if let valueData = data {
+                return String.toHexFromData(valueData)
+            }
+            return "0x0"
+        case .UInt:
+            if let valueData = data {
+                return String(UInt.fromData(valueData))
+            }
+            return "0"
+        case .String:
+            if let valueData = data, string = NSString(data: valueData, encoding: NSUTF8StringEncoding) as? String {
+                return string
+            }
+            return "<<Format Error>>"
         }
     }
 }
@@ -429,8 +468,8 @@ public extension UInt {
 
 extension String {
     static func toHexFromData(data: NSData) -> String {
-        var string = data.description.stringByReplacingOccurrencesOfString(" ", withString: "")
-        return "0x" + string.substringWithRange(Range<String.Index>(start: advance(string.startIndex, 1), end: advance(string.endIndex, -1)))
+        let string = data.description.stringByReplacingOccurrencesOfString(" ", withString: "")
+        return "0x" + string.substringWithRange(Range<String.Index>(start: string.startIndex.advancedBy(1), end: string.endIndex.advancedBy(-1)))
     }
 }
 
@@ -691,11 +730,13 @@ class SCMessage: NSObject {
             resultData.appendBytes(&payloadMarker, length: 1)
             resultData.appendData(payload!)
         }
+        print("resultData for Sending: \(resultData)")
         return resultData
     }
     
     static func fromData(data: NSData) -> SCMessage? {
         if data.length < 4 { return nil }
+        print("parsing Message FROM Data: \(data)")
         //Unparse Header
         var parserIndex = 4
         var headerBytes = [UInt8](count: parserIndex, repeatedValue: 0)

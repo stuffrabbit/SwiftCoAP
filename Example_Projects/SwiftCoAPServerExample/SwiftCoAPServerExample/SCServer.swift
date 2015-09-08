@@ -12,7 +12,7 @@ import UIKit
 //MARK:
 //MARK: SC Server Delegate Protocol implementation
 
-protocol SCServerDelegate {
+protocol SCServerDelegate: class {
     
     //Tells the delegate that an error occured during or before transmission (refer to the "SCServerErrorCode" Enum)
     func swiftCoapServer(server: SCServer, didFailWithError error: NSError)
@@ -71,7 +71,7 @@ class SCServer: NSObject {
     
     //INTERNAL PROPERTIES (allowed to modify)
     
-    var delegate: SCServerDelegate?
+    weak var delegate: SCServerDelegate?
     var autoBlock2SZX: UInt? = 2 { didSet { if let newValue = autoBlock2SZX { autoBlock2SZX = min(6, newValue) } } } //If not nil, Block2 transfer will be used automatically when the payload size exceeds the value 2^(autoBlock2SZX + 4). Valid Values: 0-6.
     var autoWellKnownCore = true //If set to true, the server will automatically provide responses for the resource "well-known/core" with its current resources.
     lazy var resources = [SCResourceModel]()

@@ -62,12 +62,13 @@ class SCClient: NSObject {
     
     //INTERNAL PROPERTIES (allowed to modify)
     
-    var delegate: SCClientDelegate?
+    weak var delegate: SCClientDelegate?
     var sendToken = true   //If true, a token with 4-8 Bytes is sent
     var autoBlock1SZX: UInt? = 2 { didSet { if let newValue = autoBlock1SZX { autoBlock1SZX = min(6, newValue) } } } //If not nil, Block1 transfer will be used automatically when the payload size exceeds the value 2^(autoBlock1SZX + 4). Valid Values: 0-6.
     
     var httpProxyingData: (hostName: String, port: UInt16)?     //If not nil, all messages will be sent via http to the given proxy address
     var cachingActive = false   //Activates caching
+    var disableRetransmissions = false //Disables Message Retransmissions
     
     //READ-ONLY PROPERTIES
     
@@ -185,7 +186,7 @@ class SCClient: NSObject {
         transmissionTimer = nil
         recentNotificationInfo = nil
         
-        if messageInTransmission.type == .Confirmable {
+        if messageInTransmission.type == .Confirmable && !disableRetransmissions {
             retransmissionCounter = 0
             currentTransmitWait = 0
             sendWithRentransmissionHandling()

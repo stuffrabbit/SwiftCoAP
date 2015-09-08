@@ -62,7 +62,7 @@ class SCClient: NSObject {
     
     //INTERNAL PROPERTIES (allowed to modify)
     
-    var delegate: SCClientDelegate?
+    weak var delegate: SCClientDelegate?
     var sendToken = true   //If true, a token with 4-8 Bytes is sent
     var autoBlock1SZX: UInt? = 2 { didSet { if let newValue = autoBlock1SZX { autoBlock1SZX = min(6, newValue) } } } //If not nil, Block1 transfer will be used automatically when the payload size exceeds the value 2^(autoBlock1SZX + 4). Valid Values: 0-6.
     

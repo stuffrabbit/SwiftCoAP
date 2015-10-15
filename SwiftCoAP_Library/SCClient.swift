@@ -158,8 +158,13 @@ class SCClient: NSObject {
         let cancelMessage = SCMessage(code: SCCodeValue(classValue: 0, detailValue: 01)!, type: .NonConfirmable, payload: nil)
         cancelMessage.token = messageInTransmission.token
         cancelMessage.options = messageInTransmission.options
+        currentMessageId = (currentMessageId % 0xFFFF) + 1
+        cancelMessage.messageId = currentMessageId
+        cancelMessage.hostName = messageInTransmission.hostName
+        cancelMessage.port = messageInTransmission.port
         var cancelByte: UInt8 = 1
         cancelMessage.options[SCOption.Observe.rawValue] = [NSData(bytes: &cancelByte, length: 1)]
+        messageInTransmission = cancelMessage
         udpSocket.sendData(cancelMessage.toData()!, toHost: messageInTransmission.hostName!, port: messageInTransmission.port!, withTimeout: 0, tag: udpSocketTag)
         udpSocketTag = (udpSocketTag % Int.max) + 1
     }

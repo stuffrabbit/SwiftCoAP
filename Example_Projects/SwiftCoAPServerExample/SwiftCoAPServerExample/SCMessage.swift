@@ -730,13 +730,13 @@ class SCMessage: NSObject {
             resultData.appendBytes(&payloadMarker, length: 1)
             resultData.appendData(payload!)
         }
-        print("resultData for Sending: \(resultData)")
+        //print("resultData for Sending: \(resultData)")
         return resultData
     }
     
     static func fromData(data: NSData) -> SCMessage? {
         if data.length < 4 { return nil }
-        print("parsing Message FROM Data: \(data)")
+        //print("parsing Message FROM Data: \(data)")
         //Unparse Header
         var parserIndex = 4
         var headerBytes = [UInt8](count: parserIndex, repeatedValue: 0)

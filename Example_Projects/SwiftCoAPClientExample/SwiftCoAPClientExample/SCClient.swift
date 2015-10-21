@@ -10,7 +10,98 @@ import UIKit
 
 
 //MARK:
-//MARK: SC Client Delegate Protocol implementation
+//MARK: SC Coap Transport Layer Error Enumeration
+
+enum SCCoAPTransportLayerError: ErrorType {
+    case SetupError, SendError
+}
+
+//MARK:
+//MARK: SC CoAP Transport Layer Delegate Protocol declaration. It is implemented by SCClient to receive responses. Your custom transport layer handler must call these callbacks to notify the SCClient object.
+
+protocol SCCoAPTransportLayerDelegate: class {
+    //CoAP Data Received
+    func transportLayerObject(transportLayerObject: SCCoAPTransportLayerProtocol, didReceiveData data: NSData, fromHost host: String, port: UInt16)
+    
+    //Error occured. Provide an appropriate NSError object.
+    func transportLayerObject(transportLayerObject: SCCoAPTransportLayerProtocol, didFailWithError error: NSError)
+}
+
+//MARK:
+//MARK: SC CoAP Transport Layer Protocol declaration
+
+protocol SCCoAPTransportLayerProtocol: class {
+    //SCClient uses this property to assign itself as delegate
+    weak var transportLayerDelegate: SCCoAPTransportLayerDelegate! { get set }
+    
+    //SClient calls this method when it wants to send CoAP data
+    func sendCoAPData(data: NSData, toHost host: String, port: UInt16) throws
+    
+    //Describe your Transport Layer Errors
+    func descriptionForTransportLayerError(error: SCCoAPTransportLayerError) -> NSString
+    
+    //Called when the transmission is over. Clear your states (e.g. close sockets)
+    func closeTransmission()
+}
+
+//MARK:
+//MARK: SC CoAP UDP Transport Layer: This class is the default transport layer handler, sending data via UDP with help of GCDAsyncUdpSocket. If you want to create a custom transport layer handler, you have to create a custom class and adopt the SCCoAPTransportLayerProtocol. Next you have to pass your class to the init method of SCClient: init(delegate: SCClientDelegate?, transportLayerObject: SCCoAPTransportLayerProtocol). You will than get callbacks to send CoAP data and have to inform your delegate (in this case an object of type SCClient) when you receive a response by using the callbacks from SCCoAPTransportLayerDelegate.
+
+final class SCCoAPUDPTransportLayer: NSObject {
+    weak var transportLayerDelegate: SCCoAPTransportLayerDelegate!
+    var udpSocket: GCDAsyncUdpSocket!
+    private var udpSocketTag: Int = 0
+    
+    private func setUpUdpSocket() -> Bool {
+        udpSocket = GCDAsyncUdpSocket(delegate: self, delegateQueue: dispatch_get_main_queue())
+        do {
+            try udpSocket!.bindToPort(0)
+            try udpSocket!.beginReceiving()
+        } catch {
+            return false
+        }
+        return true
+    }
+}
+
+extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
+    func sendCoAPData(data: NSData, toHost host: String, port: UInt16) throws {
+        if udpSocket == nil && !setUpUdpSocket() {
+            udpSocket.close()
+            udpSocket = nil
+            throw SCCoAPTransportLayerError.SetupError
+        }
+        udpSocket.sendData(data, toHost: host, port: port, withTimeout: 0, tag: udpSocketTag)
+        udpSocketTag = (udpSocketTag % Int.max) + 1
+    }
+    
+    func descriptionForTransportLayerError(error: SCCoAPTransportLayerError) -> NSString {
+        switch error {
+        case .SetupError:
+            return "Failed to setup UDP socket"
+        case .SendError:
+            return "Failed to send UDP data"
+        }
+    }
+    
+    func closeTransmission() {
+        udpSocket.close()
+        udpSocket = nil
+    }
+}
+
+extension SCCoAPUDPTransportLayer: GCDAsyncUdpSocketDelegate {
+    func udpSocket(sock: GCDAsyncUdpSocket!, didReceiveData data: NSData!, fromAddress address: NSData!, withFilterContext filterContext: AnyObject!) {
+        transportLayerDelegate.transportLayerObject(self, didReceiveData: data, fromHost: GCDAsyncUdpSocket.hostFromAddress(address), port: GCDAsyncUdpSocket.portFromAddress(address))
+    }
+    
+    func udpSocket(sock: GCDAsyncUdpSocket!, didNotSendDataWithTag tag: Int, dueToError error: NSError!) {
+        transportLayerDelegate.transportLayerObject(self, didFailWithError: error)
+    }
+}
+
+//MARK:
+//MARK: SC Client Delegate Protocol declaration
 
 @objc protocol SCClientDelegate {
     
@@ -68,7 +159,7 @@ class SCClient: NSObject {
     
     var httpProxyingData: (hostName: String, port: UInt16)?     //If not nil, all messages will be sent via http to the given proxy address
     var cachingActive = false   //Activates caching
-    var disableRetransmissions = false //Disables Message Retransmissions
+    var disableRetransmissions = false
     
     //READ-ONLY PROPERTIES
     
@@ -76,10 +167,9 @@ class SCClient: NSObject {
     
     //PRIVATE PROPERTIES
     
-    private var udpSocket: GCDAsyncUdpSocket!
+    private var transportLayerObject: SCCoAPTransportLayerProtocol!
     private var transmissionTimer: NSTimer!
     private var messageInTransmission: SCMessage!
-    private var udpSocketTag: Int = 0
     private var currentMessageId: UInt16 = UInt16(arc4random_uniform(0xFFFF) &+ 1)
     private var retransmissionCounter = 0
     private var currentTransmitWait = 0.0
@@ -89,8 +179,11 @@ class SCClient: NSObject {
     
     //MARK: Internal Methods (allowed to use)
     
-    init(delegate: SCClientDelegate?) {
+    init(delegate: SCClientDelegate?, transportLayerObject: SCCoAPTransportLayerProtocol = SCCoAPUDPTransportLayer()) {
         self.delegate = delegate
+        super.init()
+        self.transportLayerObject = transportLayerObject
+        self.transportLayerObject.transportLayerDelegate = self
     }
     
     func sendCoAPMessage(message: SCMessage, hostName: String, port: UInt16) {
@@ -128,12 +221,6 @@ class SCClient: NSObject {
             sendHttpMessageFromCoAPMessage(message)
         }
         else {
-            if udpSocket == nil && !setUpUdpSocket() {
-                closeTransmission()
-                notifyDelegateWithErrorCode(.UdpSocketSetupError)
-                return
-            }
-            
             if message.blockBody == nil && autoBlock1SZX != nil {
                 let fixedByteSize = pow(2, Double(autoBlock1SZX!) + 4)
                 if let payload = message.payload {
@@ -164,17 +251,16 @@ class SCClient: NSObject {
         cancelMessage.port = messageInTransmission.port
         var cancelByte: UInt8 = 1
         cancelMessage.options[SCOption.Observe.rawValue] = [NSData(bytes: &cancelByte, length: 1)]
-        messageInTransmission = cancelMessage
-        udpSocket.sendData(cancelMessage.toData()!, toHost: messageInTransmission.hostName!, port: messageInTransmission.port!, withTimeout: 0, tag: udpSocketTag)
-        udpSocketTag = (udpSocketTag % Int.max) + 1
+        if let messageData = cancelMessage.toData() {
+            sendCoAPMessageOverTransportLayerWithData(messageData, host: messageInTransmission.hostName!, port: messageInTransmission.port!)
+        }
     }
     
     
     //Closes the transmission. It is recommended to call this method anytime you do not expect to receive a response any longer.
     
     func closeTransmission() {
-        udpSocket.close()
-        udpSocket = nil
+        transportLayerObject.closeTransmission()
         messageInTransmission = nil
         isMessageInTransmission = false
         transmissionTimer?.invalidate()
@@ -227,9 +313,7 @@ class SCClient: NSObject {
     
     private func sendPendingMessage() {
         if let data = messageInTransmission.toData() {
-            udpSocket.sendData(data, toHost: messageInTransmission.hostName!, port: messageInTransmission.port!, withTimeout: 0, tag: udpSocketTag)
-            udpSocketTag = (udpSocketTag % Int.max) + 1
-            delegate?.swiftCoapClient?(self, didSendMessage: messageInTransmission, number: retransmissionCounter + 1)
+            sendCoAPMessageOverTransportLayerWithData(data, host: messageInTransmission.hostName!, port: messageInTransmission.port!, notifyDelegateAfterSuccess: true)
         }
         else {
             closeTransmission()
@@ -237,26 +321,29 @@ class SCClient: NSObject {
         }
     }
     
-    private func setUpUdpSocket() -> Bool {
-        udpSocket = GCDAsyncUdpSocket(delegate: self, delegateQueue: dispatch_get_main_queue())
-        
-        do {
-            try udpSocket!.bindToPort(0)
-            try udpSocket!.beginReceiving()
-        } catch {
-            return false
-        }
-        
-        return true
-    }
-    
-    private func sendEmptyMessageWithType(type: SCType, messageId: UInt16, addressData: NSData) {
+    private func sendEmptyMessageWithType(type: SCType, messageId: UInt16, toHost host: String, port: UInt16) {
         let emptyMessage = SCMessage()
         emptyMessage.type = type;
         emptyMessage.messageId = messageId
-        udpSocket?.sendData(emptyMessage.toData()!, toAddress: addressData, withTimeout: 0, tag: udpSocketTag)
-        
-        udpSocketTag = (udpSocketTag % Int.max) + 1
+        if let messageData = emptyMessage.toData() {
+            sendCoAPMessageOverTransportLayerWithData(messageData, host: host, port: port)
+        }
+    }
+    
+    private func sendCoAPMessageOverTransportLayerWithData(data: NSData, host: String, port: UInt16, notifyDelegateAfterSuccess: Bool = false) {
+        do {
+            try transportLayerObject.sendCoAPData(data, toHost: host, port: port)
+            if notifyDelegateAfterSuccess {
+                delegate?.swiftCoapClient?(self, didSendMessage: messageInTransmission, number: retransmissionCounter + 1)
+            }
+        }
+        catch let error {
+            notifyDelegateWithTransportLayerErrorType(error as! SCCoAPTransportLayerError)
+        }
+    }
+    
+    private func notifyDelegateWithTransportLayerErrorType(errorType: SCCoAPTransportLayerError) {
+        delegate?.swiftCoapClient?(self, didFailWithError: NSError(domain: SCMessage.kCoapErrorDomain, code: 0, userInfo: [NSLocalizedDescriptionKey : transportLayerObject.descriptionForTransportLayerError(errorType)]))
     }
     
     private func notifyDelegateWithErrorCode(clientErrorCode: SCClientErrorCode) {
@@ -341,9 +428,8 @@ class SCClient: NSObject {
 // MARK: SC Client Extension
 // MARK: GCD Async Udp Socket Delegate
 
-extension SCClient: GCDAsyncUdpSocketDelegate {
-    func udpSocket(sock: GCDAsyncUdpSocket!, didReceiveData data: NSData!, fromAddress address: NSData!, withFilterContext filterContext: AnyObject!) {
-        
+extension SCClient: SCCoAPTransportLayerDelegate {
+    func transportLayerObject(transportLayerObject: SCCoAPTransportLayerProtocol, didReceiveData data: NSData, fromHost host: String, port: UInt16) {
         if let message = SCMessage.fromData(data) {
             //Invalidate Timer
             transmissionTimer?.invalidate()
@@ -352,7 +438,7 @@ extension SCClient: GCDAsyncUdpSocketDelegate {
             //Check for spam
             if message.messageId != messageInTransmission.messageId && message.token != messageInTransmission.token {
                 if message.type.rawValue <= SCType.NonConfirmable.rawValue {
-                    sendEmptyMessageWithType(.Reset, messageId: message.messageId, addressData: address)
+                    sendEmptyMessageWithType(.Reset, messageId: message.messageId, toHost: host, port: port)
                 }
                 return
             }
@@ -402,7 +488,7 @@ extension SCClient: GCDAsyncUdpSocketDelegate {
             
             //Further Operations
             if message.type == .Confirmable {
-                sendEmptyMessageWithType(.Acknowledgement, messageId: message.messageId, addressData: address)
+                sendEmptyMessageWithType(.Acknowledgement, messageId: message.messageId, toHost: host, port: port)
             }
             
             if (message.type != .Acknowledgement || message.code.toCodeSample() != .Empty) && message.options[SCOption.Block2.rawValue] == nil && message.code.toCodeSample() != SCCodeSample.Continue {
@@ -414,7 +500,7 @@ extension SCClient: GCDAsyncUdpSocketDelegate {
         }
     }
     
-    func udpSocket(sock: GCDAsyncUdpSocket!, didNotSendDataWithTag tag: Int, dueToError error: NSError!) {
+    func transportLayerObject(transportLayerObject: SCCoAPTransportLayerProtocol, didFailWithError error: NSError) {
         notifyDelegateWithErrorCode(.UdpSocketSendError)
         transmissionTimer?.invalidate()
         transmissionTimer = nil

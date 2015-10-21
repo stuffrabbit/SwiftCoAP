@@ -86,6 +86,8 @@ An Example: Sending your message to the CoAP-Server `coap.me` with the Port `568
 * Whenever you receive a response to data you have sent, call methods of the protocol `SCCoAPTransportLayerDelegate` on your property `transportLayerDelegate` which will hold a weak reference to the resepective object of type `SCClient`(reference is automatically set through SCClient).
 * Checkout the source code and the implementation of the class `SCCoAPUDPTransportLayer`, to see the functionality in action.
 
+An (real) example where using a custom transport layer functionality would be helpful:
+You cannot use UDP, e.g. when you bring this library to WatchOS 2. As UDP communcation is not available on this OS you can use WatchConnectiviy as transport layer object for your `SCClient` and let the iPhone execute the UDP sendings. 
 #### SCServer
 
 This class represents a CoAP server, which can be initialized with the standard designated initializer `init()`. The given convenience initializer `init?(port: UInt16)` initializes a server instance and automatically starts listening on the given port. This initialization can fail if a UDP-socket error occurs.

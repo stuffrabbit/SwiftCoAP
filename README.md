@@ -76,6 +76,16 @@ The Options of the CoAP-Message are sent in the HTTP-Header. It is required that
 The Request-URI has the following Format: `http://proxyHost:proxyPort/coapHost:coapPort`
 An Example: Sending your message to the CoAP-Server `coap.me` with the Port `5683` via a HTTP-Proxy located at `localhost:9292`, lets the SwiftCoAP library compose the follwoing Request-URI: `http://localhost:9292/coap.me:5683`
 
+##### Custom Transport Layer Functionality
+
+`SCClient` encapsulates the CoAP transport layer functionality into a separate object which implements the `SCCoAPTransportLayerProtocol` protocol. `SCClient` uses the provided `SCCoAPUDPTransportLayer` class by default, which uses UDP. However, if you want to replace it with your own class just do the following steps:
+
+* Create a custom class and adopt the SCCoAPTransportLayerProtocol
+* Pass an object of your class to the init method of SCClient: `init(delegate: SCClientDelegate?, transportLayerObject: SCCoAPTransportLayerProtocol)`
+* `SCClient` will set itself as a delegate of your class and notify you through the methods of `SCCoAPTransportLayerProtocol` when e.g. a data needs to be sent.
+* Whenever you receive a response to data you have sent, call methods of the protocol `SCCoAPTransportLayerDelegate` on your property `transportLayerDelegate` which will hold a weak reference to the resepective object of type `SCClient`(reference is automatically set through SCClient).
+* Checkout the source code and the implementation of the class `SCCoAPUDPTransportLayer`, to see the functionality in action.
+
 #### SCServer
 
 This class represents a CoAP server, which can be initialized with the standard designated initializer `init()`. The given convenience initializer `init?(port: UInt16)` initializes a server instance and automatically starts listening on the given port. This initialization can fail if a UDP-socket error occurs.

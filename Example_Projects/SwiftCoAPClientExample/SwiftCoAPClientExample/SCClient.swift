@@ -13,7 +13,7 @@ import UIKit
 //MARK: SC Coap Transport Layer Error Enumeration
 
 enum SCCoAPTransportLayerError: ErrorType {
-    case SetupError, SendError
+    case SetupError(errorDescription: String), SendError(errorDescription: String)
 }
 
 //MARK:
@@ -36,9 +36,6 @@ protocol SCCoAPTransportLayerProtocol: class {
     
     //SClient calls this method when it wants to send CoAP data
     func sendCoAPData(data: NSData, toHost host: String, port: UInt16) throws
-    
-    //Describe your Transport Layer Errors
-    func descriptionForTransportLayerError(error: SCCoAPTransportLayerError) -> NSString
     
     //Called when the transmission is over. Clear your states (e.g. close sockets)
     func closeTransmission()
@@ -69,19 +66,10 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
         if udpSocket == nil && !setUpUdpSocket() {
             udpSocket.close()
             udpSocket = nil
-            throw SCCoAPTransportLayerError.SetupError
+            throw SCCoAPTransportLayerError.SetupError(errorDescription: "Failed to setup UDP socket")
         }
         udpSocket.sendData(data, toHost: host, port: port, withTimeout: 0, tag: udpSocketTag)
         udpSocketTag = (udpSocketTag % Int.max) + 1
-    }
-    
-    func descriptionForTransportLayerError(error: SCCoAPTransportLayerError) -> NSString {
-        switch error {
-        case .SetupError:
-            return "Failed to setup UDP socket"
-        case .SendError:
-            return "Failed to send UDP data"
-        }
     }
     
     func closeTransmission() {
@@ -337,13 +325,17 @@ class SCClient: NSObject {
                 delegate?.swiftCoapClient?(self, didSendMessage: messageInTransmission, number: retransmissionCounter + 1)
             }
         }
-        catch let error {
-            notifyDelegateWithTransportLayerErrorType(error as! SCCoAPTransportLayerError)
+        catch SCCoAPTransportLayerError.SendError(let errorDescription) {
+            notifyDelegateWithTransportLayerErrorDescription(errorDescription)
         }
+        catch SCCoAPTransportLayerError.SetupError(let errorDescription) {
+            notifyDelegateWithTransportLayerErrorDescription(errorDescription)
+        }
+        catch {}
     }
     
-    private func notifyDelegateWithTransportLayerErrorType(errorType: SCCoAPTransportLayerError) {
-        delegate?.swiftCoapClient?(self, didFailWithError: NSError(domain: SCMessage.kCoapErrorDomain, code: 0, userInfo: [NSLocalizedDescriptionKey : transportLayerObject.descriptionForTransportLayerError(errorType)]))
+    private func notifyDelegateWithTransportLayerErrorDescription(errorDescription: String) {
+        delegate?.swiftCoapClient?(self, didFailWithError: NSError(domain: SCMessage.kCoapErrorDomain, code: 0, userInfo: [NSLocalizedDescriptionKey : errorDescription]))
     }
     
     private func notifyDelegateWithErrorCode(clientErrorCode: SCClientErrorCode) {

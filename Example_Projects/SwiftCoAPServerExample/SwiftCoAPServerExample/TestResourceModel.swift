@@ -45,6 +45,6 @@ class TestResourceModel: SCResourceModel {
     
     override func dataForDelete(queryDictionary queryDictionary: [String : String], options: [Int : [NSData]]) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!)? {
         myText = ""
-        return (SCCodeSample.Delete.codeValue(), "Deleted".dataUsingEncoding(NSUTF8StringEncoding), .Plain)
+        return (SCCodeSample.Deleted.codeValue(), "Deleted".dataUsingEncoding(NSUTF8StringEncoding), .Plain)
     }
 }

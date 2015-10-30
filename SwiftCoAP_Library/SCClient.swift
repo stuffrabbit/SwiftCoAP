@@ -8,86 +8,6 @@
 
 import UIKit
 
-
-//MARK:
-//MARK: SC Coap Transport Layer Error Enumeration
-
-enum SCCoAPTransportLayerError: ErrorType {
-    case SetupError(errorDescription: String), SendError(errorDescription: String)
-}
-
-//MARK:
-//MARK: SC CoAP Transport Layer Delegate Protocol declaration. It is implemented by SCClient to receive responses. Your custom transport layer handler must call these callbacks to notify the SCClient object.
-
-protocol SCCoAPTransportLayerDelegate: class {
-    //CoAP Data Received
-    func transportLayerObject(transportLayerObject: SCCoAPTransportLayerProtocol, didReceiveData data: NSData, fromHost host: String, port: UInt16)
-    
-    //Error occured. Provide an appropriate NSError object.
-    func transportLayerObject(transportLayerObject: SCCoAPTransportLayerProtocol, didFailWithError error: NSError)
-}
-
-//MARK:
-//MARK: SC CoAP Transport Layer Protocol declaration
-
-protocol SCCoAPTransportLayerProtocol: class {
-    //SCClient uses this property to assign itself as delegate
-    weak var transportLayerDelegate: SCCoAPTransportLayerDelegate! { get set }
-    
-    //SClient calls this method when it wants to send CoAP data
-    func sendCoAPData(data: NSData, toHost host: String, port: UInt16) throws
-    
-    //Called when the transmission is over. Clear your states (e.g. close sockets)
-    func closeTransmission()
-}
-
-//MARK:
-//MARK: SC CoAP UDP Transport Layer: This class is the default transport layer handler, sending data via UDP with help of GCDAsyncUdpSocket. If you want to create a custom transport layer handler, you have to create a custom class and adopt the SCCoAPTransportLayerProtocol. Next you have to pass your class to the init method of SCClient: init(delegate: SCClientDelegate?, transportLayerObject: SCCoAPTransportLayerProtocol). You will than get callbacks to send CoAP data and have to inform your delegate (in this case an object of type SCClient) when you receive a response by using the callbacks from SCCoAPTransportLayerDelegate.
-
-final class SCCoAPUDPTransportLayer: NSObject {
-    weak var transportLayerDelegate: SCCoAPTransportLayerDelegate!
-    var udpSocket: GCDAsyncUdpSocket!
-    private var udpSocketTag: Int = 0
-    
-    private func setUpUdpSocket() -> Bool {
-        udpSocket = GCDAsyncUdpSocket(delegate: self, delegateQueue: dispatch_get_main_queue())
-        do {
-            try udpSocket!.bindToPort(0)
-            try udpSocket!.beginReceiving()
-        } catch {
-            return false
-        }
-        return true
-    }
-}
-
-extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
-    func sendCoAPData(data: NSData, toHost host: String, port: UInt16) throws {
-        if udpSocket == nil && !setUpUdpSocket() {
-            udpSocket.close()
-            udpSocket = nil
-            throw SCCoAPTransportLayerError.SetupError(errorDescription: "Failed to setup UDP socket")
-        }
-        udpSocket.sendData(data, toHost: host, port: port, withTimeout: 0, tag: udpSocketTag)
-        udpSocketTag = (udpSocketTag % Int.max) + 1
-    }
-    
-    func closeTransmission() {
-        udpSocket.close()
-        udpSocket = nil
-    }
-}
-
-extension SCCoAPUDPTransportLayer: GCDAsyncUdpSocketDelegate {
-    func udpSocket(sock: GCDAsyncUdpSocket!, didReceiveData data: NSData!, fromAddress address: NSData!, withFilterContext filterContext: AnyObject!) {
-        transportLayerDelegate.transportLayerObject(self, didReceiveData: data, fromHost: GCDAsyncUdpSocket.hostFromAddress(address), port: GCDAsyncUdpSocket.portFromAddress(address))
-    }
-    
-    func udpSocket(sock: GCDAsyncUdpSocket!, didNotSendDataWithTag tag: Int, dueToError error: NSError!) {
-        transportLayerDelegate.transportLayerObject(self, didFailWithError: error)
-    }
-}
-
 //MARK:
 //MARK: SC Client Delegate Protocol declaration
 
@@ -418,7 +338,7 @@ class SCClient: NSObject {
 
 // MARK:
 // MARK: SC Client Extension
-// MARK: GCD Async Udp Socket Delegate
+// MARK: SC CoAP Transport Layer Delegate
 
 extension SCClient: SCCoAPTransportLayerDelegate {
     func transportLayerObject(transportLayerObject: SCCoAPTransportLayerProtocol, didReceiveData data: NSData, fromHost host: String, port: UInt16) {

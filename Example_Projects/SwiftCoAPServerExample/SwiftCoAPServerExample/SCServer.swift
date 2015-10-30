@@ -65,6 +65,23 @@ enum SCServerErrorCode: Int {
 //MARK: SC Server IMPLEMENTATION
 
 class SCServer: NSObject {
+    private class SCAddressWrapper: NSObject {
+        let hostname: String
+        let port: UInt16
+        
+        init(hostname: String, port: UInt16) {
+            self.hostname = hostname
+            self.port = port
+        }
+        
+        override func isEqual(object: AnyObject?) -> Bool {
+            if let other = object as? SCAddressWrapper where other.hostname == self.hostname && other.port == self.port {
+                return true
+            }
+            return false
+        }
+    }
+    
     
     //MARK: Properties
     
@@ -77,52 +94,41 @@ class SCServer: NSObject {
     lazy var resources = [SCResourceModel]()
     
     //PRIVATE PROPERTIES
-    
-    private var udpSocket: GCDAsyncUdpSocket!
-    private var udpSocketTag: Int = 0
-    
-    private lazy var pendingMessagesForEndpoints = [NSData : [(SCMessage, NSTimer?)]]()
-    private lazy var registeredObserverForResource = [SCResourceModel : [(UInt64, NSData, UInt, UInt?)]]() //Token, Address, SequenceNumber, PrefferedBlock2SZX
-    private lazy var block1UploadsForEndpoints = [NSData : [(SCResourceModel, UInt, NSData?)]]()
+    private var transportLayerObject: SCCoAPTransportLayerProtocol!
+    private lazy var pendingMessagesForEndpoints = [SCAddressWrapper : [(SCMessage, NSTimer?)]]()
+    private lazy var registeredObserverForResource = [SCResourceModel : [(UInt64, String, UInt16, UInt, UInt?)]]() //Token, hostname, port, SequenceNumber, PrefferedBlock2SZX
+    private lazy var block1UploadsForEndpoints = [SCAddressWrapper : [(SCResourceModel, UInt, NSData?)]]()
     
     
     //MARK: Internal Methods (allowed to use)
     
     
-    //Convenience initializer (failable): Starts server on initialization.
+    //Initializer (failable): Starts server on initialization.
     
-    convenience init?(port: UInt16) {
-        self.init()
-        
-        if !start(port) {
-            return nil //UDP Setup failed
+    init?(delegate: SCServerDelegate?, transportLayerObject: SCCoAPTransportLayerProtocol = SCCoAPUDPTransportLayer(port: 5683)) {
+        self.delegate = delegate
+        super.init()
+        self.transportLayerObject = transportLayerObject
+        do {
+            try start()
+            self.transportLayerObject.transportLayerDelegate = self
+        }
+        catch {
+            return nil
         }
     }
     
-    
     //Start server manually, with the given port
     
-    func start(port: UInt16 = 5683) -> Bool {
-        if udpSocket == nil {
-            udpSocket = GCDAsyncUdpSocket(delegate: self, delegateQueue: dispatch_get_main_queue())
-            
-            do {
-                try udpSocket!.bindToPort(port)
-                try udpSocket!.beginReceiving()
-            } catch {
-                return false
-            }
-        }
-        
-        return true
+    func start(port: UInt16 = 5683) throws {
+        try self.transportLayerObject?.startListening()
     }
     
     
     //Close UDP socket and server ativity
     
     func close() {
-        udpSocket?.close()
-        udpSocket = nil
+        self.transportLayerObject?.closeTransmission()
     }
     
     
@@ -152,16 +158,17 @@ class SCServer: NSObject {
     func updateRegisteredObserversForResource(resource: SCResourceModel) {
         if var valueArray = registeredObserverForResource[resource] {
             for var i = 0; i < valueArray.count; i++ {
-                let (token, address, sequenceNumber, prefferredBlock2SZX) = valueArray[i]
+                let (token, hostname, port, sequenceNumber, prefferredBlock2SZX) = valueArray[i]
                 let notification = SCMessage(code: SCCodeValue(classValue: 2, detailValue: 05)!, type: .Confirmable, payload: resource.dataRepresentation)
                 notification.token = token
                 notification.messageId = UInt16(arc4random_uniform(0xFFFF) &+ 1)
-                notification.addressData = address
+                notification.hostName = hostname
+                notification.port = port
                 let newSequenceNumber = (sequenceNumber + 1) % UInt(pow(2.0, 24))
                 var byteArray = newSequenceNumber.toByteArray()
                 notification.addOption(SCOption.Observe.rawValue, data: NSData(bytes: &byteArray, length: byteArray.count))
                 handleBlock2ServerRequirementsForMessage(notification, preferredBlockSZX: prefferredBlock2SZX)
-                valueArray[i] = (token, address, newSequenceNumber, prefferredBlock2SZX)
+                valueArray[i] = (token, hostname, port, newSequenceNumber, prefferredBlock2SZX)
                 registeredObserverForResource[resource] = valueArray
                 setupReliableTransmissionOfMessage(notification, forResource: resource)
             }
@@ -173,7 +180,7 @@ class SCServer: NSObject {
     // MARK: Private Methods
     
     private func setupReliableTransmissionOfMessage(message: SCMessage, forResource resource: SCResourceModel) {
-        if let addressData = message.addressData {
+        if let host = message.hostName, port = message.port {
             var timer: NSTimer!
             if message.type == .Confirmable {
                 message.resourceForConfirmableResponse = resource
@@ -182,23 +189,24 @@ class SCServer: NSObject {
                 NSRunLoop.currentRunLoop().addTimer(timer, forMode: NSRunLoopCommonModes)
             }
             sendMessage(message)
-            
-            if var contextArray = pendingMessagesForEndpoints[addressData] {
+            let addressWrapper = SCAddressWrapper(hostname: host, port: port)
+            if var contextArray = pendingMessagesForEndpoints[addressWrapper] {
                 let newTuple: (SCMessage, NSTimer?) = (message, timer)
                 contextArray += [newTuple]
-                pendingMessagesForEndpoints[addressData] = contextArray
+                pendingMessagesForEndpoints[addressWrapper] = contextArray
             }
             else {
-                pendingMessagesForEndpoints[addressData] = [(message, timer)]
+                pendingMessagesForEndpoints[addressWrapper] = [(message, timer)]
             }
         }
     }
     
-    private func sendMessageWithType(type: SCType, code: SCCodeValue, payload: NSData?, messageId: UInt16, addressData: NSData, token: UInt64 = 0, options: [Int: [NSData]]! = nil) {
+    private func sendMessageWithType(type: SCType, code: SCCodeValue, payload: NSData?, messageId: UInt16, hostname: String, port: UInt16, token: UInt64 = 0, options: [Int: [NSData]]! = nil) {
         let emptyMessage = SCMessage(code: code, type: type, payload: payload)
         emptyMessage.messageId = messageId
         emptyMessage.token = token
-        emptyMessage.addressData = addressData
+        emptyMessage.hostName = hostname
+        emptyMessage.port = port
         if options != nil {
             emptyMessage.options = options
         }
@@ -206,8 +214,18 @@ class SCServer: NSObject {
     }
     
     private func sendMessage(message: SCMessage) {
-        udpSocket?.sendData(message.toData()!, toAddress: message.addressData, withTimeout: 0, tag: udpSocketTag)
-        udpSocketTag = (udpSocketTag % Int.max) + 1
+        if let messageData = message.toData(), host = message.hostName, port = message.port {
+            do {
+                try transportLayerObject.sendCoAPData(messageData, toHost: host, port: port)
+            }
+            catch SCCoAPTransportLayerError.SendError(let errorDescription) {
+                notifyDelegateWithTransportLayerErrorDescription(errorDescription)
+            }
+            catch SCCoAPTransportLayerError.SetupError(let errorDescription) {
+                notifyDelegateWithTransportLayerErrorDescription(errorDescription)
+            }
+            catch {}
+        }
     }
     
     
@@ -221,24 +239,27 @@ class SCServer: NSObject {
         sendMessage(message)
         delegate?.swiftCoapServer(self, didSendSeparateResponseMessage: message, number: retransmissionCount)
         
-        if let addressData = message.addressData, var contextArray = pendingMessagesForEndpoints[addressData] {
-            let nextTimer: NSTimer
-            if retransmissionCount < SCMessage.kMaxRetransmit {
-                let timeout = SCMessage.kAckTimeout * pow(2.0, Double(retransmissionCount)) * (SCMessage.kAckRandomFactor - (Double(arc4random()) / Double(UINT32_MAX) % 0.5));
-                nextTimer = NSTimer(timeInterval: timeout, target: self, selector: Selector("handleRetransmission:"), userInfo: ["retransmissionCount" : retransmissionCount + 1, "totalTime" : totalTime + timeout, "message" : message, "resource" : resource], repeats: false)
-            }
-            else {
-                nextTimer = NSTimer(timeInterval: SCMessage.kMaxTransmitWait - totalTime, target: self, selector: Selector("notifyNoResponseExpected:"), userInfo: ["message" : message, "resource" : resource], repeats: false)
-            }
-            NSRunLoop.currentRunLoop().addTimer(nextTimer, forMode: NSRunLoopCommonModes)
-            
-            //Update context
-            for var i = 0; i < contextArray.count; i++ {
-                let tuple = contextArray[i]
-                if tuple.0 == message {
-                    contextArray[i] = (tuple.0, nextTimer)
-                    pendingMessagesForEndpoints[addressData] = contextArray
-                    break
+        if let hostname = message.hostName, port = message.port {
+            let wrapper = SCAddressWrapper(hostname: hostname, port: port)
+            if  var contextArray = pendingMessagesForEndpoints[wrapper] {
+                let nextTimer: NSTimer
+                if retransmissionCount < SCMessage.kMaxRetransmit {
+                    let timeout = SCMessage.kAckTimeout * pow(2.0, Double(retransmissionCount)) * (SCMessage.kAckRandomFactor - (Double(arc4random()) / Double(UINT32_MAX) % 0.5));
+                    nextTimer = NSTimer(timeInterval: timeout, target: self, selector: Selector("handleRetransmission:"), userInfo: ["retransmissionCount" : retransmissionCount + 1, "totalTime" : totalTime + timeout, "message" : message, "resource" : resource], repeats: false)
+                }
+                else {
+                    nextTimer = NSTimer(timeInterval: SCMessage.kMaxTransmitWait - totalTime, target: self, selector: Selector("notifyNoResponseExpected:"), userInfo: ["message" : message, "resource" : resource], repeats: false)
+                }
+                NSRunLoop.currentRunLoop().addTimer(nextTimer, forMode: NSRunLoopCommonModes)
+                
+                //Update context
+                for var i = 0; i < contextArray.count; i++ {
+                    let tuple = contextArray[i]
+                    if tuple.0 == message {
+                        contextArray[i] = (tuple.0, nextTimer)
+                        pendingMessagesForEndpoints[wrapper] = contextArray
+                        break
+                    }
                 }
             }
         }
@@ -254,35 +275,41 @@ class SCServer: NSObject {
         removeContextForMessage(message)
         notifyDelegateWithErrorCode(.NoResponseExpectedError)
         
-        if message.options[SCOption.Observe.rawValue] != nil, let address = message.addressData {
-            deregisterObserveForResource(resource, address: address)
+        if message.options[SCOption.Observe.rawValue] != nil, let hostname = message.hostName, port = message.port {
+            deregisterObserveForResource(resource, hostname: hostname, port: port)
         }
     }
     
+    private func notifyDelegateWithTransportLayerErrorDescription(errorDescription: String) {
+        delegate?.swiftCoapServer(self, didFailWithError: NSError(domain: SCMessage.kCoapErrorDomain, code: 0, userInfo: [NSLocalizedDescriptionKey : errorDescription]))
+    }
+    
     private func removeContextForMessage(message: SCMessage) {
-        if let addressData = message.addressData, var contextArray = pendingMessagesForEndpoints[addressData] {
-            
-            func removeFromContextAtIndex(index: Int) {
-                contextArray.removeAtIndex(index)
-                if contextArray.count > 0 {
-                    pendingMessagesForEndpoints[addressData] = contextArray
-                }
-                else {
-                    pendingMessagesForEndpoints.removeValueForKey(addressData)
-                }
-            }
-            
-            for var i = 0; i < contextArray.count; i++ {
-                let tuple = contextArray[i]
-                if tuple.0.messageId == message.messageId {
-                    if let oldTimer = tuple.1 {
-                        oldTimer.invalidate()
+        if let hostname = message.hostName, port = message.port {
+            let wrapper = SCAddressWrapper(hostname: hostname, port: port)
+            if var contextArray = pendingMessagesForEndpoints[wrapper] {
+                func removeFromContextAtIndex(index: Int) {
+                    contextArray.removeAtIndex(index)
+                    if contextArray.count > 0 {
+                        pendingMessagesForEndpoints[wrapper] = contextArray
                     }
-                    if message.type == .Reset && tuple.0.options[SCOption.Observe.rawValue] != nil, let resource = tuple.0.resourceForConfirmableResponse  {
-                        deregisterObserveForResource(resource, address: addressData)
+                    else {
+                        pendingMessagesForEndpoints.removeValueForKey(wrapper)
                     }
-                    removeFromContextAtIndex(i)
-                    break
+                }
+                
+                for var i = 0; i < contextArray.count; i++ {
+                    let tuple = contextArray[i]
+                    if tuple.0.messageId == message.messageId {
+                        if let oldTimer = tuple.1 {
+                            oldTimer.invalidate()
+                        }
+                        if message.type == .Reset && tuple.0.options[SCOption.Observe.rawValue] != nil, let resource = tuple.0.resourceForConfirmableResponse  {
+                            deregisterObserveForResource(resource, hostname: hostname, port: port)
+                        }
+                        removeFromContextAtIndex(i)
+                        break
+                    }
                 }
             }
         }
@@ -384,13 +411,13 @@ class SCServer: NSObject {
         }
         
         //Observe
-        if resource.observable, let observeValueArray = message.options[SCOption.Observe.rawValue], observeValue = observeValueArray.first, msgAddr = message.addressData {
+        if resource.observable, let observeValueArray = message.options[SCOption.Observe.rawValue], observeValue = observeValueArray.first, hostname = message.hostName, port = message.port {
             if observeValue.length > 0 && UInt.fromData(observeValue) == 1 {
-                deregisterObserveForResource(resource, address: msgAddr)
+                deregisterObserveForResource(resource, hostname: hostname, port: port)
             }
             else {
                 //Register for Observe
-                var newValueArray: [(UInt64, NSData, UInt, UInt?)]
+                var newValueArray: [(UInt64, String, UInt16, UInt, UInt?)]
                 var currentSequenceNumber: UInt = 0
                 var prefferredBlock2SZX: UInt?
                 if let block2ValueArray = message.options[SCOption.Block2.rawValue], block2Data = block2ValueArray.first {
@@ -399,19 +426,19 @@ class SCServer: NSObject {
                 }
                 
                 if var valueArray = registeredObserverForResource[resource] {
-                    if let index = getIndexOfObserverInValueArray(valueArray, address: msgAddr) {
-                        let (_, _, sequenceNumber, _) = valueArray[index]
+                    if let index = getIndexOfObserverInValueArray(valueArray, hostname: hostname, port: port) {
+                        let (_, _, _, sequenceNumber, _) = valueArray[index]
                         let newSequenceNumber = (sequenceNumber + 1) % UInt(pow(2.0, 24))
                         currentSequenceNumber = UInt(newSequenceNumber)
-                        valueArray[index] = (message.token, msgAddr, newSequenceNumber, prefferredBlock2SZX)
+                        valueArray[index] = (message.token, hostname, port, newSequenceNumber, prefferredBlock2SZX)
                     }
                     else {
-                        valueArray += [(message.token, msgAddr, 0, prefferredBlock2SZX)]
+                        valueArray += [(message.token, hostname, port, 0, prefferredBlock2SZX)]
                     }
                     newValueArray = valueArray
                 }
                 else {
-                    newValueArray = [(message.token, msgAddr, 0, prefferredBlock2SZX)]
+                    newValueArray = [(message.token, hostname, port, 0, prefferredBlock2SZX)]
                 }
                 
                 registeredObserverForResource[resource] = newValueArray
@@ -423,13 +450,14 @@ class SCServer: NSObject {
         
         responseMessage.messageId = message.messageId
         responseMessage.token = message.token
-        responseMessage.addressData = message.addressData
+        responseMessage.hostName = message.hostName
+        responseMessage.port = message.port
         
         return responseMessage
     }
     
-    private func deregisterObserveForResource(resource: SCResourceModel, address: NSData) {
-        if var valueArray = registeredObserverForResource[resource], let index = getIndexOfObserverInValueArray(valueArray, address: address) {
+    private func deregisterObserveForResource(resource: SCResourceModel, hostname: String, port: UInt16 ) {
+        if var valueArray = registeredObserverForResource[resource], let index = getIndexOfObserverInValueArray(valueArray, hostname: hostname, port: port) {
             valueArray.removeAtIndex(index)
             if valueArray.count == 0 {
                 registeredObserverForResource.removeValueForKey(resource)
@@ -440,10 +468,10 @@ class SCServer: NSObject {
         }
     }
     
-    private func getIndexOfObserverInValueArray(valueArray: [(UInt64, NSData, UInt, UInt?)], address: NSData) -> Int? {
+    private func getIndexOfObserverInValueArray(valueArray: [(UInt64, String, UInt16, UInt, UInt?)], hostname: String, port: UInt16) -> Int? {
         for var i = 0; i < valueArray.count; i++ {
-            let (_, add, _, _) = valueArray[i]
-            if add == address {
+            let (_, currentHost, currentPort, _, _) = valueArray[i]
+            if currentHost == hostname && currentPort == port {
                 return i
             }
         }
@@ -453,10 +481,11 @@ class SCServer: NSObject {
     private func retrievePayloadAfterBlock1HandlingWithMessage(message: SCMessage, resultResource: SCResourceModel) -> NSData? {
         var currentPayload = message.payload
         
-        if let block1ValueArray = message.options[SCOption.Block1.rawValue], blockData = block1ValueArray.first, address = message.addressData {
+        if let block1ValueArray = message.options[SCOption.Block1.rawValue], blockData = block1ValueArray.first, hostname = message.hostName, port = message.port {
             let blockAsInt = UInt.fromData(blockData)
             let blockNumber = blockAsInt >> 4
-            if var uploadArray = block1UploadsForEndpoints[address] {
+            let wrapper = SCAddressWrapper(hostname: hostname, port: port)
+            if var uploadArray = block1UploadsForEndpoints[wrapper] {
                 for var i = 0; i < uploadArray.count; i++ {
                     let (resource, sequenceNumber, storedPayload) = uploadArray[i]
                     if resource == resultResource {
@@ -471,18 +500,18 @@ class SCServer: NSObject {
                         if blockAsInt & 8 == 8 {
                             //more bit is set: Store Information
                             uploadArray[i] = (resource, sequenceNumber + 1, currentPayload)
-                            block1UploadsForEndpoints[address] = uploadArray
-                            sendMessageWithType(.Confirmable, code: SCCodeSample.Continue.codeValue(), payload: nil, messageId: message.messageId, addressData: address, token: message.token, options: [SCOption.Block1.rawValue : block1ValueArray])
+                            block1UploadsForEndpoints[wrapper] = uploadArray
+                            sendMessageWithType(.Confirmable, code: SCCodeSample.Continue.codeValue(), payload: nil, messageId: message.messageId, hostname: hostname, port: port, token: message.token, options: [SCOption.Block1.rawValue : block1ValueArray])
                             return nil
                         }
                         else {
                             //No more blocks will be received, cleanup context
                             uploadArray.removeAtIndex(i)
                             if uploadArray.count > 0 {
-                                block1UploadsForEndpoints[address] = uploadArray
+                                block1UploadsForEndpoints[wrapper] = uploadArray
                             }
                             else {
-                                block1UploadsForEndpoints.removeValueForKey(address)
+                                block1UploadsForEndpoints.removeValueForKey(wrapper)
                             }
                         }
                         break
@@ -491,8 +520,8 @@ class SCServer: NSObject {
             }
             else if blockNumber == 0 {
                 if blockAsInt & 8 == 8 {
-                    block1UploadsForEndpoints[address] = [(resultResource, 0, currentPayload)]
-                    sendMessageWithType(.Confirmable, code: SCCodeSample.Continue.codeValue(), payload: nil, messageId: message.messageId, addressData: address, token: message.token, options: [SCOption.Block1.rawValue : block1ValueArray])
+                    block1UploadsForEndpoints[SCAddressWrapper(hostname: hostname, port: port)] = [(resultResource, 0, currentPayload)]
+                    sendMessageWithType(.Confirmable, code: SCCodeSample.Continue.codeValue(), payload: nil, messageId: message.messageId, hostname: hostname, port: port, token: message.token, options: [SCOption.Block1.rawValue : block1ValueArray])
                     return nil
                 }
             }
@@ -505,17 +534,23 @@ class SCServer: NSObject {
     }
     
     func respondWithErrorCode(responseCode: SCCodeValue, diagnosticPayload: NSData?, forMessage message: SCMessage, withType type: SCType) {
-        if let address = message.addressData {
-            sendMessageWithType(type, code: responseCode, payload: diagnosticPayload, messageId: message.messageId, addressData: address, token: message.token)
+        if let hostname = message.hostName, port = message.port {
+            sendMessageWithType(type, code: responseCode, payload: diagnosticPayload, messageId: message.messageId, hostname: hostname, port: port, token: message.token)
             delegate?.swiftCoapServer(self, didRejectRequestWithCode: message.code, forPath: message.completeUriPath(), withResponseCode: responseCode)
         }
     }
 }
 
-extension SCServer: GCDAsyncUdpSocketDelegate {
-    func udpSocket(sock: GCDAsyncUdpSocket!, didReceiveData data: NSData!, fromAddress address: NSData!, withFilterContext filterContext: AnyObject!) {
+
+// MARK:
+// MARK: SC Server Extension
+// MARK: SC CoAP Transport Layer Delegate
+
+extension SCServer: SCCoAPTransportLayerDelegate {
+    func transportLayerObject(transportLayerObject: SCCoAPTransportLayerProtocol, didReceiveData data: NSData, fromHost host: String, port: UInt16) {
         if let message = SCMessage.fromData(data) {
-            message.addressData = address
+            message.hostName = host
+            message.port = port
             
             //Filter
             
@@ -532,7 +567,7 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
             
             if message.code == SCCodeValue(classValue: 0, detailValue: 00) || message.code.classValue >= 1 {
                 if message.type == .Confirmable || message.type == .NonConfirmable {
-                    sendMessageWithType(.Reset, code: SCCodeValue(classValue: 0, detailValue: 00)!, payload: nil, messageId: message.messageId, addressData: address)
+                    sendMessageWithType(.Reset, code: SCCodeValue(classValue: 0, detailValue: 00)!, payload: nil, messageId: message.messageId, hostname: host, port: port)
                 }
                 return
             }
@@ -553,7 +588,8 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                     let wellKnownResponseMessage = SCMessage(code: SCCodeValue(classValue: 2, detailValue: 05)!, type: resultType, payload: wellKnownData)
                     wellKnownResponseMessage.messageId = message.messageId
                     wellKnownResponseMessage.token = message.token
-                    wellKnownResponseMessage.addressData = address
+                    wellKnownResponseMessage.hostName = host
+                    wellKnownResponseMessage.port = port
                     var hashInt = data.hashValue
                     wellKnownResponseMessage.addOption(SCOption.Etag.rawValue, data: NSData(bytes: &hashInt, length: sizeof(Int)))
                     var contentValue: UInt8 = UInt8(SCContentFormat.LinkFormat.rawValue)
@@ -581,7 +617,7 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                     if resultResource.etag != nil, let etagValueArray = message.options[SCOption.Etag.rawValue] {
                         for etagData in etagValueArray {
                             if etagData == resultResource.etag {
-                                sendMessageWithType(resultType, code: SCCodeSample.Valid.codeValue(), payload: nil, messageId: message.messageId, addressData: address, token: message.token, options: [SCOption.Etag.rawValue : [etagData]])
+                                sendMessageWithType(resultType, code: SCCodeSample.Valid.codeValue(), payload: nil, messageId: message.messageId, hostname: host, port: port, token: message.token, options: [SCOption.Etag.rawValue : [etagData]])
                                 delegate?.swiftCoapServer(self, didHandleRequestWithCode: message.code, forResource: resultResource, withResponseCode: SCCodeSample.Valid.codeValue())
                                 return
                             }
@@ -590,7 +626,7 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
                     
                     if resultResource.willHandleDataAsynchronouslyForGet(queryDictionary: message.uriQueryDictionary(), options: message.options, originalMessage: message) {
                         if message.type == .Confirmable {
-                            sendMessageWithType(.Acknowledgement, code: SCCodeValue(classValue: 0, detailValue: 00)!, payload: nil, messageId: message.messageId, addressData: address)
+                            sendMessageWithType(.Acknowledgement, code: SCCodeValue(classValue: 0, detailValue: 00)!, payload: nil, messageId: message.messageId, hostname: host, port: port)
                         }
                         delegate?.swiftCoapServer(self, didHandleRequestWithCode: message.code, forResource: resultResource, withResponseCode: SCCodeValue(classValue: 0, detailValue: 00)!)
                         return
@@ -639,7 +675,7 @@ extension SCServer: GCDAsyncUdpSocketDelegate {
         }
     }
     
-    func udpSocket(sock: GCDAsyncUdpSocket!, didNotSendDataWithTag tag: Int, dueToError error: NSError!) {
+    func transportLayerObject(transportLayerObject: SCCoAPTransportLayerProtocol, didFailWithError error: NSError) {
         notifyDelegateWithErrorCode(.UdpSocketSendError)
     }
 }

@@ -12,6 +12,7 @@ This implementation provides the standard CoAP features (including Caching) alon
 A short manual is provided below.
 Feedback is highly appreciated!
 
+**NEW:** Download the Client-Implementation **myCoAP** for iOS/watchOS which builds upon this library: [AppStore-Link](https://itunes.apple.com/de/app/mycoap/id1048383045?mt=8)
 Want an Objective-C implementation? Checkout [iCoAP](https://github.com/stuffrabbit/iCoAP).
 
 Getting Started

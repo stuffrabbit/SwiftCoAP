@@ -46,12 +46,12 @@ enum SCAllowedRoute: UInt {
 //MARK: SC Server Error Code Enumeration
 
 enum SCServerErrorCode: Int {
-    case UdpSocketSendError, ReceivedInvalidMessageError, NoResponseExpectedError
+    case TransportLayerError, ReceivedInvalidMessageError, NoResponseExpectedError
     
     func descriptionString() -> String {
         switch self {
-        case .UdpSocketSendError:
-            return "Failed to send data via UDP"
+        case .TransportLayerError:
+            return "Failed to send data via the given Transport Layer"
         case .ReceivedInvalidMessageError:
             return "Data received was not a valid CoAP Message"
         case .NoResponseExpectedError:
@@ -120,7 +120,7 @@ class SCServer: NSObject {
     
     //Start server manually, with the given port
     
-    func start(port: UInt16 = 5683) throws {
+    func start() throws {
         try self.transportLayerObject?.startListening()
     }
     
@@ -144,7 +144,7 @@ class SCServer: NSObject {
     
     //Call this method when your resource is ready to process a separate response. The concerned resource must return true for the method `willHandleDataAsynchronouslyForGet(...)`. It is necessary to pass the original message and the resource (both received in `willHandleDataAsynchronouslyForGet`) so that the server is able to retrieve the current context. Additionay, you have to pass the typical "values" tuple which form the response (as described in SCMessage -> SCResourceModel)
     
-    func didCompleteAsynchronousRequestForOriginalMessage(message: SCMessage, resource: SCResourceModel, values:(statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!)) {
+    func didCompleteAsynchronousRequestForOriginalMessage(message: SCMessage, resource: SCResourceModel, values: (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!)) {
         let type: SCType = message.type == .Confirmable ? .Confirmable : .NonConfirmable
         if let separateMessage = createMessageForValues((values.statusCode, values.payloadData, values.contentFormat, nil), withType: type, relatedMessage: message, requestedResource: resource) {
             separateMessage.messageId = UInt16(arc4random_uniform(0xFFFF) &+ 1)
@@ -676,6 +676,6 @@ extension SCServer: SCCoAPTransportLayerDelegate {
     }
     
     func transportLayerObject(transportLayerObject: SCCoAPTransportLayerProtocol, didFailWithError error: NSError) {
-        notifyDelegateWithErrorCode(.UdpSocketSendError)
+        notifyDelegateWithErrorCode(.TransportLayerError)
     }
 }

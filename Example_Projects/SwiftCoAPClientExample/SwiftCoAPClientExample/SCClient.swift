@@ -28,16 +28,14 @@ import UIKit
 //MARK: SC Client Error Code Enumeration
 
 enum SCClientErrorCode: Int {
-    case UdpSocketSetupError, UdpSocketSendError, MessageInvalidCodeForSendingError, ReceivedInvalidMessageError, NoResponseExpectedError, ProxyingError
+    case TransportLayerSendError, MessageInvalidForSendingError, ReceivedInvalidMessageError, NoResponseExpectedError, ProxyingError
     
     func descriptionString() -> String {
         switch self {
-        case .UdpSocketSetupError:
-            return "Failed to setup UDP socket"
-        case .UdpSocketSendError:
-            return "Failed to send data via UDP"
-        case .MessageInvalidCodeForSendingError:
-            return "CoAP-Message Code is not valid"
+        case .TransportLayerSendError:
+            return "Failed to send data via the given Transport Layer"
+        case .MessageInvalidForSendingError:
+            return "CoAP-Message is not valid"
         case .ReceivedInvalidMessageError:
             return "Data received was not a valid CoAP Message"
         case .NoResponseExpectedError:
@@ -225,7 +223,7 @@ class SCClient: NSObject {
         }
         else {
             closeTransmission()
-            notifyDelegateWithErrorCode(.MessageInvalidCodeForSendingError)
+            notifyDelegateWithErrorCode(.MessageInvalidForSendingError)
         }
     }
     
@@ -413,7 +411,7 @@ extension SCClient: SCCoAPTransportLayerDelegate {
     }
     
     func transportLayerObject(transportLayerObject: SCCoAPTransportLayerProtocol, didFailWithError error: NSError) {
-        notifyDelegateWithErrorCode(.UdpSocketSendError)
+        notifyDelegateWithErrorCode(.TransportLayerSendError)
         transmissionTimer?.invalidate()
         transmissionTimer = nil
     }

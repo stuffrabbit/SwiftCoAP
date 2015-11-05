@@ -500,10 +500,7 @@ struct SCCodeValue: Equatable {
     }
     
     func toCodeSample() -> SCCodeSample? {
-        if let code = SCCodeSample(rawValue: Int(toRawValue())) {
-            return code
-        }
-        return nil
+        return SCCodeSample(rawValue: Int(toRawValue()))
     }
     
     static func fromCodeSample(code: SCCodeSample) -> SCCodeValue {
@@ -596,6 +593,9 @@ class SCResourceModel: NSObject {
         didSet {
             if var hashInt = dataRepresentation?.hashValue {
                 etag = NSData(bytes: &hashInt, length: sizeof(Int))
+            }
+            else {
+                etag = nil
             }
         }
     }// The current data representation of the resource. Needs to stay up to date

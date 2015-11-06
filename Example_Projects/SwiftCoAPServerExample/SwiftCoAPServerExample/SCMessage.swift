@@ -926,23 +926,8 @@ class SCMessage: NSObject {
         
         for (key, valueArray) in options {
             for value in valueArray {
-                var fieldString: String
-                if let optEnum = SCOption(rawValue: key) {
-                    switch optEnum.format() {
-                    case .String:
-                        fieldString = NSString(data: value, encoding: NSUTF8StringEncoding) as? String ?? ""
-                    case .Empty:
-                        fieldString = ""
-                    default:
-                        fieldString = String(UInt.fromData(value))
-                    }
-                }
-                else {
-                    fieldString = ""
-                }
-                
-                if let optionName = SCOption(rawValue: key)?.toString().uppercaseString {
-                    urlRequest.addValue(String(fieldString), forHTTPHeaderField: optionName)
+                if let option = SCOption(rawValue: key) {
+                    urlRequest.addValue(option.displayStringForData(value), forHTTPHeaderField: option.toString().uppercaseString)
                 }
             }
         }
@@ -958,23 +943,13 @@ class SCMessage: NSObject {
         if let typeString = urlResponse.allHeaderFields[SCMessage.kProxyCoAPTypeKey] as? String, type = SCType.fromShortString(typeString) {
             message.type = type
         }
+        else {
+            message.type = .Acknowledgement
+        }
+        
         for opt in SCOption.allValues {
             if let optValue = urlResponse.allHeaderFields["HTTP_\(opt.toString().uppercaseString)"] as? String {
-                var optValueData: NSData
-                switch opt.format() {
-                case .Empty:
-                    optValueData = NSData()
-                case .String:
-                    optValueData = optValue.dataUsingEncoding(NSUTF8StringEncoding)!
-                default:
-                    if let intVal = Int(optValue) {
-                        var byteArray = UInt(intVal).toByteArray()
-                        optValueData = NSData(bytes: &byteArray, length: byteArray.count)
-                    }
-                    else {
-                        optValueData = NSData()
-                    }
-                }
+                let optValueData = opt.dataForValueString(optValue) ?? NSData()
                 message.options[opt.rawValue] = [optValueData]
             }
         }

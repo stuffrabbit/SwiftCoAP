@@ -341,10 +341,7 @@ class SCClient: NSObject {
 extension SCClient: SCCoAPTransportLayerDelegate {
     func transportLayerObject(transportLayerObject: SCCoAPTransportLayerProtocol, didReceiveData data: NSData, fromHost host: String, port: UInt16) {
         if let message = SCMessage.fromData(data) {
-            //Invalidate Timer
-            transmissionTimer?.invalidate()
-            transmissionTimer = nil
-            
+    
             //Check for spam
             if message.messageId != messageInTransmission.messageId && message.token != messageInTransmission.token {
                 if message.type.rawValue <= SCType.NonConfirmable.rawValue {
@@ -352,6 +349,10 @@ extension SCClient: SCCoAPTransportLayerDelegate {
                 }
                 return
             }
+    
+            //Invalidate Timer
+            transmissionTimer?.invalidate()
+            transmissionTimer = nil
             
             //Set timestamp
             message.timeStamp = NSDate()

@@ -39,6 +39,21 @@ enum SCAllowedRoute: UInt {
     case Post = 0b10
     case Put = 0b100
     case Delete = 0b1000
+    
+    init?(codeValue: SCCodeValue) {
+        switch codeValue {
+        case SCCodeValue(classValue: 0, detailValue: 01)!:
+            self = Get
+        case SCCodeValue(classValue: 0, detailValue: 03)!:
+            self = Post
+        case SCCodeValue(classValue: 0, detailValue: 03)!:
+            self = Put
+        case SCCodeValue(classValue: 0, detailValue: 04)!:
+            self = Delete
+        default:
+            return nil
+        }
+    }
 }
 
 
@@ -68,6 +83,9 @@ class SCServer: NSObject {
     private class SCAddressWrapper: NSObject {
         let hostname: String
         let port: UInt16
+        override var hashValue: Int {
+            get { return hostname.hashValue &+ port.hashValue }
+        }
         
         init(hostname: String, port: UInt16) {
             self.hostname = hostname
@@ -144,9 +162,9 @@ class SCServer: NSObject {
     
     //Call this method when your resource is ready to process a separate response. The concerned resource must return true for the method `willHandleDataAsynchronouslyForGet(...)`. It is necessary to pass the original message and the resource (both received in `willHandleDataAsynchronouslyForGet`) so that the server is able to retrieve the current context. Additionay, you have to pass the typical "values" tuple which form the response (as described in SCMessage -> SCResourceModel)
     
-    func didCompleteAsynchronousRequestForOriginalMessage(message: SCMessage, resource: SCResourceModel, values: (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!)) {
+    func didCompleteAsynchronousRequestForOriginalMessage(message: SCMessage, resource: SCResourceModel, values: (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!)) {
         let type: SCType = message.type == .Confirmable ? .Confirmable : .NonConfirmable
-        if let separateMessage = createMessageForValues((values.statusCode, values.payloadData, values.contentFormat, nil), withType: type, relatedMessage: message, requestedResource: resource) {
+        if let separateMessage = createMessageForValues((values.statusCode, values.payloadData, values.contentFormat, values.locationUri), withType: type, relatedMessage: message, requestedResource: resource) {
             separateMessage.messageId = UInt16(arc4random_uniform(0xFFFF) &+ 1)
             setupReliableTransmissionOfMessage(separateMessage, forResource: resource)
         }
@@ -609,6 +627,18 @@ extension SCServer: SCCoAPTransportLayerDelegate {
             }
             
             if resultResource != nil {
+                
+                func didHandleAsyncRequestForRoute(route: SCAllowedRoute) -> Bool {
+                    if resultResource.willHandleDataAsynchronouslyForRoute(route, queryDictionary: message.uriQueryDictionary(), options: message.options, originalMessage: message) {
+                        if message.type == .Confirmable {
+                            sendMessageWithType(.Acknowledgement, code: SCCodeValue(classValue: 0, detailValue: 00)!, payload: nil, messageId: message.messageId, hostname: host, port: port)
+                        }
+                        delegate?.swiftCoapServer(self, didHandleRequestWithCode: message.code, forResource: resultResource, withResponseCode: SCCodeValue(classValue: 0, detailValue: 00)!)
+                        return true
+                    }
+                    return false
+                }
+                
                 var resultTuple: (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!)?
                 
                 switch message.code {
@@ -624,11 +654,7 @@ extension SCServer: SCCoAPTransportLayerDelegate {
                         }
                     }
                     
-                    if resultResource.willHandleDataAsynchronouslyForGet(queryDictionary: message.uriQueryDictionary(), options: message.options, originalMessage: message) {
-                        if message.type == .Confirmable {
-                            sendMessageWithType(.Acknowledgement, code: SCCodeValue(classValue: 0, detailValue: 00)!, payload: nil, messageId: message.messageId, hostname: host, port: port)
-                        }
-                        delegate?.swiftCoapServer(self, didHandleRequestWithCode: message.code, forResource: resultResource, withResponseCode: SCCodeValue(classValue: 0, detailValue: 00)!)
+                    if didHandleAsyncRequestForRoute(.Get) {
                         return
                     }
                     else if let (statusCode, payloadData, contentFormat) = resultResource.dataForGet(queryDictionary: message.uriQueryDictionary(), options: message.options) {
@@ -636,7 +662,10 @@ extension SCServer: SCCoAPTransportLayerDelegate {
                     }
                 case SCCodeValue(classValue: 0, detailValue: 02)! where resultResource.allowedRoutes & SCAllowedRoute.Post.rawValue == SCAllowedRoute.Post.rawValue:
                     if let payload = retrievePayloadAfterBlock1HandlingWithMessage(message, resultResource: resultResource) {
-                        if let tuple = resultResource.dataForPost(queryDictionary: message.uriQueryDictionary(), options: message.options, requestData: payload) {
+                        if didHandleAsyncRequestForRoute(.Post) {
+                            return
+                        }
+                        else if let tuple = resultResource.dataForPost(queryDictionary: message.uriQueryDictionary(), options: message.options, requestData: payload) {
                             resultTuple = tuple
                         }
                     }
@@ -645,7 +674,10 @@ extension SCServer: SCCoAPTransportLayerDelegate {
                     }
                 case SCCodeValue(classValue: 0, detailValue: 03)! where resultResource.allowedRoutes & SCAllowedRoute.Put.rawValue == SCAllowedRoute.Put.rawValue:
                     if let payload = retrievePayloadAfterBlock1HandlingWithMessage(message, resultResource: resultResource) {
-                        if let tuple = resultResource.dataForPut(queryDictionary: message.uriQueryDictionary(), options: message.options, requestData: payload) {
+                        if didHandleAsyncRequestForRoute(.Put) {
+                            return
+                        }
+                        else if let tuple = resultResource.dataForPut(queryDictionary: message.uriQueryDictionary(), options: message.options, requestData: payload) {
                             resultTuple = tuple
                         }
                     }
@@ -653,7 +685,10 @@ extension SCServer: SCCoAPTransportLayerDelegate {
                         return
                     }
                 case SCCodeValue(classValue: 0, detailValue: 04)! where resultResource.allowedRoutes & SCAllowedRoute.Delete.rawValue == SCAllowedRoute.Delete.rawValue:
-                    if let (statusCode, payloadData, contentFormat) = resultResource.dataForDelete(queryDictionary: message.uriQueryDictionary(), options: message.options) {
+                    if didHandleAsyncRequestForRoute(.Delete) {
+                        return
+                    }
+                    else if let (statusCode, payloadData, contentFormat) = resultResource.dataForDelete(queryDictionary: message.uriQueryDictionary(), options: message.options) {
                         resultTuple = (statusCode, payloadData, contentFormat, nil)
                     }
                 default:

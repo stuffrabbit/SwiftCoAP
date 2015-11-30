@@ -20,7 +20,7 @@ class ExampleViewController: UIViewController {
         if let server = SCServer(delegate: self) {
             server.resources.append(TestResourceModel(name: "test", allowedRoutes: SCAllowedRoute.Get.rawValue | SCAllowedRoute.Post.rawValue | SCAllowedRoute.Put.rawValue | SCAllowedRoute.Delete.rawValue, text: "This is a very long description text, I hope that all of you will like it. It should be transmitted via the block2 option by default"))
             server.resources.append(TimeResourceModel(name: "time", allowedRoutes: SCAllowedRoute.Get.rawValue, text: "Current Date Time: \(NSDate())", server: server))
-            server.resources.append(SeparateResourceModel(name: "separate", allowedRoutes: SCAllowedRoute.Get.rawValue, text: "Delayed answer...", server: server))
+            server.resources.append(SeparateResourceModel(name: "separate", allowedRoutes: SCAllowedRoute.Get.rawValue | SCAllowedRoute.Post.rawValue | SCAllowedRoute.Delete.rawValue, text: "Delayed answer...", server: server))
             
             server.autoBlock2SZX = 1
             myServer = server
@@ -72,6 +72,6 @@ extension ExampleViewController: SCServerDelegate {
     
     func swiftCoapServer(server: SCServer, willUpdatedObserversForResource resource: SCResourceModel) {
         tableView.reloadData()
-        print("Attempting to Update Observers for resource \(resource.name)")
+     //   print("Attempting to Update Observers for resource \(resource.name)")
     }
 }

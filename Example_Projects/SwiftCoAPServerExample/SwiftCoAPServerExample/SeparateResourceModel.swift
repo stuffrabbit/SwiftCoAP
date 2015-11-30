@@ -33,10 +33,31 @@ class SeparateResourceModel: SCResourceModel {
         )
     }
     
-    override func willHandleDataAsynchronouslyForGet(queryDictionary queryDictionary: [String : String], options: [Int : [NSData]], originalMessage: SCMessage) -> Bool {
-        delay(6.0) {
-        self.server.didCompleteAsynchronousRequestForOriginalMessage(originalMessage, resource: self, values: (SCCodeValue(classValue: 2, detailValue: 05)!, self.myText.dataUsingEncoding(NSUTF8StringEncoding), .Plain))
+    override func willHandleDataAsynchronouslyForRoute(route: SCAllowedRoute, queryDictionary: [String : String], options: [Int : [NSData]], originalMessage: SCMessage) -> Bool {
+        switch route {
+        case .Get:
+            delay(6.0) {
+                self.server.didCompleteAsynchronousRequestForOriginalMessage(originalMessage, resource: self, values: (SCCodeValue(classValue: 2, detailValue: 05)!, self.myText.dataUsingEncoding(NSUTF8StringEncoding), .Plain, nil))
+            }
+        case .Post:
+            delay(6.0) {
+                if let data = originalMessage.payload, string = NSString(data: data, encoding: NSUTF8StringEncoding) as? String {
+                    self.myText = string
+                    self.server.didCompleteAsynchronousRequestForOriginalMessage(originalMessage, resource: self, values: (SCCodeSample.Created.codeValue(), "Data created successfully".dataUsingEncoding(NSUTF8StringEncoding), .Plain, self.name))
+                    
+                }
+                else {
+                    self.server.didCompleteAsynchronousRequestForOriginalMessage(originalMessage, resource: self, values: (SCCodeSample.Forbidden.codeValue(), "Invalid Data sent".dataUsingEncoding(NSUTF8StringEncoding), .Plain, nil))
+                }
+            }
+        case .Put, .Delete:
+            return false
         }
         return true
+    }
+    
+    override func dataForDelete(queryDictionary queryDictionary: [String : String], options: [Int : [NSData]]) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!)? {
+        myText = "<>"
+        return (SCCodeSample.Deleted.codeValue(), "Deleted".dataUsingEncoding(NSUTF8StringEncoding), .Plain)
     }
 }

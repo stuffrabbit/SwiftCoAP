@@ -1,6 +1,6 @@
 SwiftCoAP
 =====
-**Swift 2.0** in this branch. Switch to "version1-2" for Swift 1.2.
+**Swift 2.0** in this branch. Switch to "swift3"for Swift 3.
 
 **NEW:** Download the Client-Implementation **myCoAP** for iOS/watchOS which builds upon this library: [AppStore-Link](https://itunes.apple.com/de/app/mycoap/id1048383045?mt=8)
 

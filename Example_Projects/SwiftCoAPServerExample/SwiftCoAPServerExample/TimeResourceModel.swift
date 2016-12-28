@@ -12,11 +12,11 @@ class TimeResourceModel: SCResourceModel {
     //Individual Properties
     var myText: String {
         didSet {
-            self.dataRepresentation = myText.dataUsingEncoding(NSUTF8StringEncoding) //update observable Data anytime myText is changed
+            self.dataRepresentation = myText.data(using: String.Encoding.utf8) //update observable Data anytime myText is changed
         }
     }
     weak var server: SCServer!
-    var observeTimer: NSTimer!
+    var observeTimer: Timer!
     //
         
     init(name: String, allowedRoutes: UInt, text: String, server: SCServer!) {
@@ -24,18 +24,18 @@ class TimeResourceModel: SCResourceModel {
         self.server = server
         super.init(name: name, allowedRoutes: allowedRoutes)
         //Starting Updates for Observe
-        self.observeTimer = NSTimer(timeInterval: 5.0, target: self, selector: "updateObservableData", userInfo: nil, repeats: true)
-        NSRunLoop.currentRunLoop().addTimer(self.observeTimer, forMode: NSRunLoopCommonModes)
+        self.observeTimer = Timer(timeInterval: 5.0, target: self, selector: #selector(TimeResourceModel.updateObservableData), userInfo: nil, repeats: true)
+        RunLoop.current.add(self.observeTimer, forMode: RunLoopMode.commonModes)
         self.observable = true
-        self.dataRepresentation = myText.dataUsingEncoding(NSUTF8StringEncoding)
+        self.dataRepresentation = myText.data(using: String.Encoding.utf8)
     }
     
     func updateObservableData() {
-        myText = "Observe Time: \(NSDate())"
+        myText = "Observe Time: \(Date())"
         server.updateRegisteredObserversForResource(self)
     }
     
-    override func dataForGet(queryDictionary queryDictionary: [String : String], options: [Int : [NSData]]) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!)? {
-        return (SCCodeValue(classValue: 2, detailValue: 05)!, myText.dataUsingEncoding(NSUTF8StringEncoding), .Plain)
+    override func dataForGet(queryDictionary: [String : String], options: [Int : [Data]]) -> (statusCode: SCCodeValue, payloadData: Data?, contentFormat: SCContentFormat?)? {
+        return (SCCodeValue(classValue: 2, detailValue: 05)!, myText.data(using: String.Encoding.utf8), .plain)
     }
 }

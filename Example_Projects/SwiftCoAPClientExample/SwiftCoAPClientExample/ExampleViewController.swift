@@ -20,11 +20,16 @@ class ExampleViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        coapClient = SCClient(delegate: self)
-        //coapClient.cachingActive = true
-        coapClient.sendToken = true
-        coapClient.autoBlock1SZX = 2
-        //coapClient.httpProxyingData = ("localhost", 5683)
+        let client = SCClient(delegate: self)
+        client.sendToken = true
+        client.autoBlock1SZX = 2
+        
+        //Advanced Settings
+        
+        //client.cachingActive = true
+        //client.httpProxyingData = ("localhost", 5683)
+        
+        self.coapClient = client
         
         //Default values, change if you want
         hostTextField.text = "coap.me"
@@ -33,21 +38,21 @@ class ExampleViewController: UIViewController {
     
     // MARK: Actions
     
-    @IBAction func onClickDelete(sender: AnyObject) {
+    @IBAction func onClickDelete(_ sender: AnyObject) {
         textView.text = ""
     }
     
-    @IBAction func onClickSendMessage(sender: AnyObject) {
+    @IBAction func onClickSendMessage(_ sender: AnyObject) {
         if sender is UIButton {
             view.endEditing(true)
         }
-        let m = SCMessage(code: SCCodeValue(classValue: 0, detailValue: 01)!, type: .Confirmable, payload: "test".dataUsingEncoding(NSUTF8StringEncoding))
+        let m = SCMessage(code: SCCodeValue(classValue: 0, detailValue: 01)!, type: .confirmable, payload: "test".data(using: String.Encoding.utf8))
         
-        if let stringData = uriPathTextField.text?.dataUsingEncoding(NSUTF8StringEncoding) {
-            m.addOption(SCOption.UriPath.rawValue, data: stringData)
+        if let stringData = uriPathTextField.text?.data(using: String.Encoding.utf8) {
+            m.addOption(SCOption.uriPath.rawValue, data: stringData)
         }
         
-        if let portString = portTextField.text, hostString = hostTextField.text, port = UInt16(portString) {
+        if let portString = portTextField.text, let hostString = hostTextField.text, let port = UInt16(portString) {
             coapClient.sendCoAPMessage(m, hostName:hostString,  port: port)
         }
         else {
@@ -57,7 +62,7 @@ class ExampleViewController: UIViewController {
 }
 
 extension ExampleViewController: UITextFieldDelegate {
-    func textFieldShouldReturn(textField: UITextField) -> Bool {
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
         switch textField {
         case hostTextField:
             portTextField.becomeFirstResponder()
@@ -72,10 +77,10 @@ extension ExampleViewController: UITextFieldDelegate {
 }
 
 extension ExampleViewController: SCClientDelegate {
-    func swiftCoapClient(client: SCClient, didReceiveMessage message: SCMessage) {
+    func swiftCoapClient(_ client: SCClient, didReceiveMessage message: SCMessage) {
         var payloadstring = ""
         if let pay = message.payload {
-            if let string = NSString(data: pay, encoding:NSUTF8StringEncoding) {
+            if let string = NSString(data: pay as Data, encoding:String.Encoding.utf8.rawValue) {
                 payloadstring = String(string)
             }
         }
@@ -93,11 +98,11 @@ extension ExampleViewController: SCClientDelegate {
         textView.text = separatorLine + firstPartString + optString + separatorLine + textView.text
     }
     
-    func swiftCoapClient(client: SCClient, didFailWithError error: NSError) {
+    func swiftCoapClient(_ client: SCClient, didFailWithError error: NSError) {
         textView.text = "Failed with Error \(error.localizedDescription)" + separatorLine + separatorLine + textView.text
     }
     
-    func swiftCoapClient(client: SCClient, didSendMessage message: SCMessage, number: Int) {
+    func swiftCoapClient(_ client: SCClient, didSendMessage message: SCMessage, number: Int) {
         textView.text = "Message sent (\(number)) with type: \(message.type.shortString()) with id: \(message.messageId)\n" + separatorLine + separatorLine + textView.text
     }
 }

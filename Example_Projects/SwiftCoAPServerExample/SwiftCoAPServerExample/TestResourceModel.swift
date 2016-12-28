@@ -12,7 +12,7 @@ class TestResourceModel: SCResourceModel {
     //Individual Properties
     var myText: String {
         didSet {
-            self.dataRepresentation = myText.dataUsingEncoding(NSUTF8StringEncoding) //update observable Data anytime myText is changed
+            self.dataRepresentation = myText.data(using: String.Encoding.utf8) //update observable Data anytime myText is changed
         }
     }
     //
@@ -20,31 +20,31 @@ class TestResourceModel: SCResourceModel {
     init(name: String, allowedRoutes: UInt, text: String) {
         self.myText = text
         super.init(name: name, allowedRoutes: allowedRoutes)
-        self.dataRepresentation = myText.dataUsingEncoding(NSUTF8StringEncoding)
+        self.dataRepresentation = myText.data(using: String.Encoding.utf8)
     }
     
-    override func dataForGet(queryDictionary queryDictionary: [String : String], options: [Int : [NSData]]) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!)? {
-        return (SCCodeValue(classValue: 2, detailValue: 05)!, myText.dataUsingEncoding(NSUTF8StringEncoding), .Plain)
+    override func dataForGet(queryDictionary: [String : String], options: [Int : [Data]]) -> (statusCode: SCCodeValue, payloadData: Data?, contentFormat: SCContentFormat?)? {
+        return (SCCodeValue(classValue: 2, detailValue: 05)!, myText.data(using: String.Encoding.utf8), .plain)
     }
     
-    override func dataForPost(queryDictionary queryDictionary: [String : String], options: [Int : [NSData]], requestData: NSData?) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!)? {
-        if let data = requestData, string = NSString(data: data, encoding: NSUTF8StringEncoding) as? String{
+    override func dataForPost(queryDictionary: [String : String], options: [Int : [Data]], requestData: Data?) -> (statusCode: SCCodeValue, payloadData: Data?, contentFormat: SCContentFormat?, locationUri: String?)? {
+        if let data = requestData, let string = NSString(data: data, encoding: String.Encoding.utf8.rawValue) as? String{
             myText = string
-            return (SCCodeSample.Created.codeValue(), "Data created successfully".dataUsingEncoding(NSUTF8StringEncoding), .Plain, self.name)
+            return (SCCodeSample.created.codeValue(), "Data created successfully".data(using: String.Encoding.utf8), .plain, self.name)
         }
-        return (SCCodeSample.Forbidden.codeValue(), "Invalid Data sent".dataUsingEncoding(NSUTF8StringEncoding), .Plain, nil)
+        return (SCCodeSample.forbidden.codeValue(), "Invalid Data sent".data(using: String.Encoding.utf8), .plain, nil)
     }
     
-    override func dataForPut(queryDictionary queryDictionary: [String : String], options: [Int : [NSData]], requestData: NSData?) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!, locationUri: String!)? {
-        if let data = requestData, string = NSString(data: data, encoding: NSUTF8StringEncoding) as? String{
+    override func dataForPut(queryDictionary: [String : String], options: [Int : [Data]], requestData: Data?) -> (statusCode: SCCodeValue, payloadData: Data?, contentFormat: SCContentFormat?, locationUri: String?)? {
+        if let data = requestData, let string = NSString(data: data, encoding: String.Encoding.utf8.rawValue) as? String{
             myText += string
-            return (SCCodeSample.Changed.codeValue(), "Update Successful".dataUsingEncoding(NSUTF8StringEncoding), .Plain, self.name)
+            return (SCCodeSample.changed.codeValue(), "Update Successful".data(using: String.Encoding.utf8), .plain, self.name)
         }
-        return (SCCodeSample.Forbidden.codeValue(), "Invalid Data sent".dataUsingEncoding(NSUTF8StringEncoding), .Plain, nil)
+        return (SCCodeSample.forbidden.codeValue(), "Invalid Data sent".data(using: String.Encoding.utf8), .plain, nil)
     }
     
-    override func dataForDelete(queryDictionary queryDictionary: [String : String], options: [Int : [NSData]]) -> (statusCode: SCCodeValue, payloadData: NSData?, contentFormat: SCContentFormat!)? {
+    override func dataForDelete(queryDictionary: [String : String], options: [Int : [Data]]) -> (statusCode: SCCodeValue, payloadData: Data?, contentFormat: SCContentFormat?)? {
         myText = ""
-        return (SCCodeSample.Deleted.codeValue(), "Deleted".dataUsingEncoding(NSUTF8StringEncoding), .Plain)
+        return (SCCodeSample.deleted.codeValue(), "Deleted".data(using: String.Encoding.utf8), .plain)
     }
 }

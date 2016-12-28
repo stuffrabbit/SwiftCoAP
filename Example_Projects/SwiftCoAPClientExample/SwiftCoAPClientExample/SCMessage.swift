@@ -101,7 +101,7 @@ extension SCCoAPUDPTransportLayer: GCDAsyncUdpSocketDelegate {
     }
     
     func udpSocket(_ sock: GCDAsyncUdpSocket!, didNotSendDataWithTag tag: Int, dueToError error: Error!) {
-        transportLayerDelegate.transportLayerObject(self, didFailWithError: error)
+        transportLayerDelegate.transportLayerObject(self, didFailWithError: error as NSError)
     }
 }
 
@@ -742,8 +742,8 @@ class SCMessage: NSObject {
     
     func isFresh() -> Bool {
         func validateMaxAge(_ value: UInt) -> Bool {
-            if timeStamp != nil {
-                let expirationDate = timeStamp!.addingTimeInterval(Double(value))
+            if let tStamp = timeStamp {
+                let expirationDate = tStamp.addingTimeInterval(Double(value))
                 return Date().compare(expirationDate) != .orderedDescending
             }
             return false
@@ -834,21 +834,21 @@ class SCMessage: NSObject {
                 }
                 
                 resultData.append(&optionFirstByte, length: 1)
-                if extendedDelta != nil {
-                    resultData.append(extendedDelta!)
+                if let extDelta = extendedDelta {
+                    resultData.append(extDelta)
                 }
-                if extendedLength != nil {
-                    resultData.append(extendedLength!)
+                if let extLength = extendedLength {
+                    resultData.append(extLength)
                 }
                 
                 resultData.append(value)
             }
         }
         
-        if payload != nil {
+        if let p = payload {
             var payloadMarker: UInt8 = 0xFF
             resultData.append(&payloadMarker, length: 1)
-            resultData.append(payload!)
+            resultData.append(p)
         }
         //print("resultData for Sending: \(resultData)")
         return resultData as Data
@@ -1014,8 +1014,8 @@ class SCMessage: NSObject {
         
         func dataArrayFromString(_ string: String!, withSeparator separator: String) -> [Data] {
             var resultDataArray = [Data]()
-            if string != nil {
-                let stringArray = string.components(separatedBy: separator)
+            if let s = string {
+                let stringArray = s.components(separatedBy: separator)
                 for subString in stringArray {
                     if let data = subString.data(using: String.Encoding.utf8) {
                         resultDataArray.append(data)

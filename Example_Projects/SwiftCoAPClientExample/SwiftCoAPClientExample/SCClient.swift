@@ -127,13 +127,13 @@ class SCClient: NSObject {
             sendHttpMessageFromCoAPMessage(message)
         }
         else {
-            if message.blockBody == nil && autoBlock1SZX != nil {
-                let fixedByteSize = pow(2, Double(autoBlock1SZX!) + 4)
+            if message.blockBody == nil, let autoB1SZX = autoBlock1SZX {
+                let fixedByteSize = pow(2, Double(autoB1SZX) + 4)
                 if let payload = message.payload {
                     let blocksCount = ceil(Double(payload.count) / fixedByteSize)
                     if blocksCount > 1 {
                         message.blockBody = payload
-                        let blockValue = 8 + UInt(autoBlock1SZX!)
+                        let blockValue = 8 + UInt(autoB1SZX)
                         sendBlock1MessageForCurrentContext(payload: payload.subdata(in: (0 ..< Int(fixedByteSize))), blockValue: blockValue)
                         return
                     }

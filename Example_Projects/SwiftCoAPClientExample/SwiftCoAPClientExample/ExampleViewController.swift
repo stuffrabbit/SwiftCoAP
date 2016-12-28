@@ -20,11 +20,16 @@ class ExampleViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        coapClient = SCClient(delegate: self)
-        //coapClient.cachingActive = true
-        coapClient.sendToken = true
-        coapClient.autoBlock1SZX = 2
-        //coapClient.httpProxyingData = ("localhost", 5683)
+        let client = SCClient(delegate: self)
+        client.sendToken = true
+        client.autoBlock1SZX = 2
+        
+        //Advanced Settings
+        
+        //client.cachingActive = true
+        //client.httpProxyingData = ("localhost", 5683)
+        
+        self.coapClient = client
         
         //Default values, change if you want
         hostTextField.text = "coap.me"

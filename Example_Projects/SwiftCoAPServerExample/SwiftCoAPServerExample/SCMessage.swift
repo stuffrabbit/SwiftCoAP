@@ -581,6 +581,32 @@ extension Data {
     }
 }
 
+
+//MARK:
+//MARK: SC Allowed Route Enumeration
+
+enum SCAllowedRoute: UInt {
+    case get = 0b1
+    case post = 0b10
+    case put = 0b100
+    case delete = 0b1000
+    
+    init?(codeValue: SCCodeValue) {
+        switch codeValue {
+        case SCCodeValue(classValue: 0, detailValue: 01)!:
+            self = .get
+        case SCCodeValue(classValue: 0, detailValue: 03)!:
+            self = .post
+        case SCCodeValue(classValue: 0, detailValue: 03)!:
+            self = .put
+        case SCCodeValue(classValue: 0, detailValue: 04)!:
+            self = .delete
+        default:
+            return nil
+        }
+    }
+}
+
 //MARK:
 //MARK: Resource Implementation, used for SCServer
 
@@ -716,8 +742,8 @@ class SCMessage: NSObject {
     
     func isFresh() -> Bool {
         func validateMaxAge(_ value: UInt) -> Bool {
-            if timeStamp != nil {
-                let expirationDate = timeStamp!.addingTimeInterval(Double(value))
+            if let tStamp = timeStamp {
+                let expirationDate = tStamp.addingTimeInterval(Double(value))
                 return Date().compare(expirationDate) != .orderedDescending
             }
             return false
@@ -808,21 +834,21 @@ class SCMessage: NSObject {
                 }
                 
                 resultData.append(&optionFirstByte, length: 1)
-                if extendedDelta != nil {
-                    resultData.append(extendedDelta!)
+                if let extDelta = extendedDelta {
+                    resultData.append(extDelta)
                 }
-                if extendedLength != nil {
-                    resultData.append(extendedLength!)
+                if let extLength = extendedLength {
+                    resultData.append(extLength)
                 }
                 
                 resultData.append(value)
             }
         }
         
-        if payload != nil {
+        if let p = payload {
             var payloadMarker: UInt8 = 0xFF
             resultData.append(&payloadMarker, length: 1)
-            resultData.append(payload!)
+            resultData.append(p)
         }
         //print("resultData for Sending: \(resultData)")
         return resultData as Data
@@ -988,8 +1014,8 @@ class SCMessage: NSObject {
         
         func dataArrayFromString(_ string: String!, withSeparator separator: String) -> [Data] {
             var resultDataArray = [Data]()
-            if string != nil {
-                let stringArray = string.components(separatedBy: separator)
+            if let s = string {
+                let stringArray = s.components(separatedBy: separator)
                 for subString in stringArray {
                     if let data = subString.data(using: String.Encoding.utf8) {
                         resultDataArray.append(data)

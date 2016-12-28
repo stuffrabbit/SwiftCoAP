@@ -32,32 +32,6 @@ protocol SCServerDelegate: class {
 
 
 //MARK:
-//MARK: SC Allowed Route Enumeration
-
-enum SCAllowedRoute: UInt {
-    case get = 0b1
-    case post = 0b10
-    case put = 0b100
-    case delete = 0b1000
-    
-    init?(codeValue: SCCodeValue) {
-        switch codeValue {
-        case SCCodeValue(classValue: 0, detailValue: 01)!:
-            self = .get
-        case SCCodeValue(classValue: 0, detailValue: 03)!:
-            self = .post
-        case SCCodeValue(classValue: 0, detailValue: 03)!:
-            self = .put
-        case SCCodeValue(classValue: 0, detailValue: 04)!:
-            self = .delete
-        default:
-            return nil
-        }
-    }
-}
-
-
-//MARK:
 //MARK: SC Server Error Code Enumeration
 
 enum SCServerErrorCode: Int {
@@ -225,8 +199,8 @@ class SCServer: NSObject {
         emptyMessage.token = token
         emptyMessage.hostName = hostname
         emptyMessage.port = port
-        if options != nil {
-            emptyMessage.options = options
+        if let opt = options {
+            emptyMessage.options = opt
         }
         sendMessage(emptyMessage)
     }
@@ -367,8 +341,8 @@ class SCServer: NSObject {
             responseMessage.addOption(SCOption.contentFormat.rawValue, data: Data(bytes: &contentFormatByteArray, count: contentFormatByteArray.count))
         }
         
-        if values.locationUri != nil {
-            if let (pathDataArray, queryDataArray) = SCMessage.getPathAndQueryDataArrayFromUriString(values.locationUri ?? ""), pathDataArray.count > 0 {
+        if let locationUri = values.locationUri {
+            if let (pathDataArray, queryDataArray) = SCMessage.getPathAndQueryDataArrayFromUriString(locationUri), pathDataArray.count > 0 {
                 responseMessage.options[SCOption.locationPath.rawValue] = pathDataArray
                 if queryDataArray.count > 0 {
                     responseMessage.options[SCOption.locationQuery.rawValue] = queryDataArray
@@ -377,13 +351,13 @@ class SCServer: NSObject {
         }
         
         if message.code == SCCodeValue(classValue: 0, detailValue: 01) {
-            if resource.maxAgeValue != nil {
-                var byteArray = resource.maxAgeValue.toByteArray()
+            if let maxAgeVal = resource.maxAgeValue {
+                var byteArray = maxAgeVal.toByteArray()
                 responseMessage.addOption(SCOption.maxAge.rawValue, data: Data(bytes: &byteArray, count: byteArray.count))
             }
             
-            if resource.etag != nil  {
-                responseMessage.addOption(SCOption.etag.rawValue, data: resource.etag)
+            if let etag = resource.etag {
+                responseMessage.addOption(SCOption.etag.rawValue, data: etag)
             }
         }
         

@@ -357,6 +357,9 @@ extension SCClient: SCCoAPTransportLayerDelegate {
             //Set timestamp
             message.timeStamp = Date()
             
+            //Set return address
+            message.hostName = host
+            
             //Handle Caching, Separate, etc
             if cachingActive && messageInTransmission.code == SCCodeValue(classValue: 0, detailValue: 01) {
                 cachedMessagePairs[messageInTransmission] = SCMessage.copyFromMessage(message)

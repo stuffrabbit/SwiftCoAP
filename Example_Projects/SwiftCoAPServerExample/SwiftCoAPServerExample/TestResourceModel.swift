@@ -28,7 +28,7 @@ class TestResourceModel: SCResourceModel {
     }
     
     override func dataForPost(queryDictionary: [String : String], options: [Int : [Data]], requestData: Data?) -> (statusCode: SCCodeValue, payloadData: Data?, contentFormat: SCContentFormat?, locationUri: String?)? {
-        if let data = requestData, let string = NSString(data: data, encoding: String.Encoding.utf8.rawValue) as? String{
+        if let data = requestData, let string = NSString(data: data, encoding: String.Encoding.utf8.rawValue) as String?{
             myText = string
             return (SCCodeSample.created.codeValue(), "Data created successfully".data(using: String.Encoding.utf8), .plain, self.name)
         }
@@ -36,7 +36,7 @@ class TestResourceModel: SCResourceModel {
     }
     
     override func dataForPut(queryDictionary: [String : String], options: [Int : [Data]], requestData: Data?) -> (statusCode: SCCodeValue, payloadData: Data?, contentFormat: SCContentFormat?, locationUri: String?)? {
-        if let data = requestData, let string = NSString(data: data, encoding: String.Encoding.utf8.rawValue) as? String{
+        if let data = requestData, let string = NSString(data: data, encoding: String.Encoding.utf8.rawValue) as String?{
             myText += string
             return (SCCodeSample.changed.codeValue(), "Update Successful".data(using: String.Encoding.utf8), .plain, self.name)
         }

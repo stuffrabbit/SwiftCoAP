@@ -318,7 +318,7 @@ enum SCOption: Int {
             }
             return "0"
         case .string:
-            if let valueData = data, let string = NSString(data: valueData, encoding: String.Encoding.utf8.rawValue) as? String {
+            if let valueData = data, let string = NSString(data: valueData, encoding: String.Encoding.utf8.rawValue) as String? {
                 return string
             }
             return "<<Format Error>>"
@@ -1049,7 +1049,7 @@ class SCMessage: NSObject {
     
     static func payloadRepresentationStringForData(_ data: Data, contentFormat: SCContentFormat) -> String {
         if contentFormat.needsStringUTF8Conversion() {
-            return (NSString(data: data, encoding: String.Encoding.utf8.rawValue) as? String) ?? "Format Error"
+            return (NSString(data: data, encoding: String.Encoding.utf8.rawValue) as String?) ?? "Format Error"
         }
         return String.toHexFromData(data)
     }

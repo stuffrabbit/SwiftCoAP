@@ -40,7 +40,7 @@ class SeparateResourceModel: SCResourceModel {
             }
         case .post:
             delay(6.0) {
-                if let data = originalMessage.payload, let string = NSString(data: data as Data, encoding: String.Encoding.utf8.rawValue) as? String {
+                if let data = originalMessage.payload, let string = NSString(data: data as Data, encoding: String.Encoding.utf8.rawValue) as String? {
                     self.myText = string
                     self.server.didCompleteAsynchronousRequestForOriginalMessage(originalMessage, resource: self, values: (SCCodeSample.created.codeValue(), "Data created successfully".data(using: String.Encoding.utf8), .plain, self.name))
                     

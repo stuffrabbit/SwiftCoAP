@@ -47,7 +47,7 @@ extension ExampleViewController: UITableViewDataSource {
         let cell = tableView.dequeueReusableCell(withIdentifier: kDefaultCellIdentifier) as! DefaultTableViewCell
         let textResource = myServer!.resources[indexPath.row]
         cell.nameLabel.text = textResource.name
-        cell.detailLabel.text = NSString(data: textResource.dataRepresentation as Data, encoding: String.Encoding.utf8.rawValue) as? String
+        cell.detailLabel.text = NSString(data: textResource.dataRepresentation as Data, encoding: String.Encoding.utf8.rawValue) as String?
         return cell
     }
 }

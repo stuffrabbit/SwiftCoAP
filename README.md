@@ -1,6 +1,6 @@
 SwiftCoAP
 =====
-**Updated for Swift 3**
+**Updated for Swift 4.2**
 
 **NEW:** Download the Client-Implementation **myCoAP** for iOS/watchOS which builds upon this library: [AppStore-Link](https://itunes.apple.com/de/app/mycoap/id1048383045?mt=8)
 

@@ -56,7 +56,7 @@ class ExampleViewController: UIViewController {
             coapClient.sendCoAPMessage(m, hostName:hostString,  port: port)
         }
         else {
-            textView.text = "\(textView.text)\nInvalid PORT"
+            textView.text = "\(String(describing: textView.text))\nInvalid PORT"
         }
     }
 }
@@ -103,6 +103,6 @@ extension ExampleViewController: SCClientDelegate {
     }
     
     func swiftCoapClient(_ client: SCClient, didSendMessage message: SCMessage, number: Int) {
-        textView.text = "Message sent (\(number)) with type: \(message.type.shortString()) with id: \(message.messageId)\n" + separatorLine + separatorLine + textView.text
+        textView.text = "Message sent (\(number)) with type: \(message.type.shortString()) with id: \(String(describing: message.messageId))\n" + separatorLine + separatorLine + textView.text
     }
 }

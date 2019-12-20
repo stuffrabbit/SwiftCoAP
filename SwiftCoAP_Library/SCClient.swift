@@ -194,7 +194,7 @@ class SCClient: NSObject {
     
     //Actually PRIVATE! Do not call from outside. Has to be internally visible as NSTimer won't find it otherwise
     
-    func sendWithRentransmissionHandling() {
+    @objc func sendWithRentransmissionHandling() {
         sendPendingMessage()
         
         if retransmissionCounter < SCMessage.kMaxRetransmit {
@@ -206,12 +206,12 @@ class SCClient: NSObject {
         else {
             transmissionTimer = Timer(timeInterval: SCMessage.kMaxTransmitWait - currentTransmitWait, target: self, selector: #selector(SCClient.notifyNoResponseExpected), userInfo: nil, repeats: false)
         }
-        RunLoop.current.add(transmissionTimer, forMode: RunLoopMode.commonModes)
+        RunLoop.current.add(transmissionTimer, forMode: RunLoop.Mode.common)
     }
     
     //Actually PRIVATE! Do not call from outside. Has to be internally visible as NSTimer won't find it otherwise
     
-    func notifyNoResponseExpected() {
+    @objc func notifyNoResponseExpected() {
         closeTransmission()
         notifyDelegateWithErrorCode(.noResponseExpectedError)
     }

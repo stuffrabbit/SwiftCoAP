@@ -429,7 +429,6 @@ class SCServer: NSObject {
                         valueArray[index] = (message.token, hostname, port, newSequenceNumber, prefferredBlock2SZX)
                     }
                     else {
-//                        valueArray += [(message.token, hostname, port, 0, prefferredBlock2SZX)]
                         valueArray.append((message.token, hostname, port, 0, prefferredBlock2SZX))
                     }
                     newValueArray = valueArray

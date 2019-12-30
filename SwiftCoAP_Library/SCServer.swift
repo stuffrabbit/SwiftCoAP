@@ -57,7 +57,7 @@ class SCServer: NSObject {
     fileprivate class SCAddressWrapper: NSObject {
         let hostname: String
         let port: UInt16
-        override var hashValue: Int {
+        override var hash: Int {
             get { return hostname.hashValue &+ port.hashValue }
         }
         
@@ -178,7 +178,7 @@ class SCServer: NSObject {
                 message.resourceForConfirmableResponse = resource
                 let timeout = SCMessage.kAckTimeout * 2.0 * (SCMessage.kAckRandomFactor - ((Double(arc4random()) / Double(UINT32_MAX)).truncatingRemainder(dividingBy: 0.5)));
                 timer = Timer(timeInterval: timeout, target: self, selector: #selector(SCServer.handleRetransmission(_:)), userInfo: ["retransmissionCount" : 1, "totalTime" : timeout, "message" : message, "resource" : resource], repeats: false)
-                RunLoop.current.add(timer, forMode: RunLoopMode.commonModes)
+                RunLoop.current.add(timer, forMode: RunLoop.Mode.common)
             }
             sendMessage(message)
             let addressWrapper = SCAddressWrapper(hostname: host, port: port)
@@ -223,7 +223,7 @@ class SCServer: NSObject {
     
     //Actually PRIVATE! Do not call from outside. Has to be internally visible as NSTimer won't find it otherwise
     
-    func handleRetransmission(_ timer: Timer) {
+    @objc func handleRetransmission(_ timer: Timer) {
         guard let userInfoDict = timer.userInfo as? [String: Any] else { return }
         
         let retransmissionCount = userInfoDict["retransmissionCount"] as! Int
@@ -244,7 +244,7 @@ class SCServer: NSObject {
                 else {
                     nextTimer = Timer(timeInterval: SCMessage.kMaxTransmitWait - totalTime, target: self, selector: #selector(SCServer.notifyNoResponseExpected(_:)), userInfo: ["message" : message, "resource" : resource], repeats: false)
                 }
-                RunLoop.current.add(nextTimer, forMode: RunLoopMode.commonModes)
+                RunLoop.current.add(nextTimer, forMode: RunLoop.Mode.common)
                 
                 //Update context
                 for i in 0 ..< contextArray.count {
@@ -262,7 +262,7 @@ class SCServer: NSObject {
     
     //Actually PRIVATE! Do not call from outside. Has to be internally visible as NSTimer won't find it otherwise
     
-    func notifyNoResponseExpected(_ timer: Timer)  {
+    @objc func notifyNoResponseExpected(_ timer: Timer)  {
         guard let userInfoDict = timer.userInfo as? [String: Any] else { return }
 
         let message = userInfoDict["message"] as! SCMessage
@@ -429,7 +429,7 @@ class SCServer: NSObject {
                         valueArray[index] = (message.token, hostname, port, newSequenceNumber, prefferredBlock2SZX)
                     }
                     else {
-                        valueArray += [(message.token, hostname, port, 0, prefferredBlock2SZX)]
+                        valueArray.append((message.token, hostname, port, 0, prefferredBlock2SZX))
                     }
                     newValueArray = valueArray
                 }

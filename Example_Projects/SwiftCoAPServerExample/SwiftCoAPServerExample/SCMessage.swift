@@ -34,7 +34,7 @@ protocol SCCoAPTransportLayerDelegate: class {
 
 protocol SCCoAPTransportLayerProtocol: class {
     //SCClient uses this property to assign itself as delegate
-    weak var transportLayerDelegate: SCCoAPTransportLayerDelegate! { get set }
+    var transportLayerDelegate: SCCoAPTransportLayerDelegate! { get set }
     
     //SClient calls this method when it wants to send CoAP data
     func sendCoAPData(_ data: Data, toHost host: String, port: UInt16) throws
@@ -563,7 +563,7 @@ public extension UInt {
 extension String {
     static func toHexFromData(_ data: Data) -> String {
         let string = data.description.replacingOccurrences(of: " ", with: "")
-        return "0x" + string.substring(with: (string.characters.index(string.startIndex, offsetBy: 1) ..< string.characters.index(string.endIndex, offsetBy: -1)))
+        return "0x" + string[string.index(string.startIndex, offsetBy: 1)..<string.index(string.endIndex, offsetBy: -1)]
     }
 }
 

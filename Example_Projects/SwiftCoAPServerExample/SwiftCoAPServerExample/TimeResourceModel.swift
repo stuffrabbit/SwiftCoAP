@@ -25,12 +25,12 @@ class TimeResourceModel: SCResourceModel {
         super.init(name: name, allowedRoutes: allowedRoutes)
         //Starting Updates for Observe
         self.observeTimer = Timer(timeInterval: 5.0, target: self, selector: #selector(TimeResourceModel.updateObservableData), userInfo: nil, repeats: true)
-        RunLoop.current.add(self.observeTimer, forMode: RunLoopMode.commonModes)
+        RunLoop.current.add(self.observeTimer, forMode: RunLoop.Mode.common)
         self.observable = true
         self.dataRepresentation = myText.data(using: String.Encoding.utf8)
     }
     
-    func updateObservableData() {
+    @objc func updateObservableData() {
         myText = "Observe Time: \(Date())"
         server.updateRegisteredObserversForResource(self)
     }

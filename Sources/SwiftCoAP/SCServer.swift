@@ -12,7 +12,7 @@ import UIKit
 //MARK:
 //MARK: SC Server Delegate Protocol implementation
 
-protocol SCServerDelegate: class {
+public protocol SCServerDelegate: AnyObject {
     
     //Tells the delegate that an error occured during or before transmission (refer to the "SCServerErrorCode" Enum)
     func swiftCoapServer(_ server: SCServer, didFailWithError error: NSError)
@@ -34,10 +34,10 @@ protocol SCServerDelegate: class {
 //MARK:
 //MARK: SC Server Error Code Enumeration
 
-enum SCServerErrorCode: Int {
+public enum SCServerErrorCode: Int {
     case transportLayerError, receivedInvalidMessageError, noResponseExpectedError
     
-    func descriptionString() -> String {
+    public func descriptionString() -> String {
         switch self {
         case .transportLayerError:
             return "Failed to send data via the given Transport Layer"
@@ -53,7 +53,7 @@ enum SCServerErrorCode: Int {
 //MARK:
 //MARK: SC Server IMPLEMENTATION
 
-class SCServer: NSObject {
+public class SCServer: NSObject {
     fileprivate class SCAddressWrapper: NSObject {
         let hostname: String
         let port: UInt16
@@ -61,7 +61,7 @@ class SCServer: NSObject {
             get { return hostname.hashValue &+ port.hashValue }
         }
         
-        init(hostname: String, port: UInt16) {
+        public init(hostname: String, port: UInt16) {
             self.hostname = hostname
             self.port = port
         }
@@ -80,10 +80,10 @@ class SCServer: NSObject {
     
     //INTERNAL PROPERTIES (allowed to modify)
     
-    weak var delegate: SCServerDelegate?
-    var autoBlock2SZX: UInt? = 2 { didSet { if let newValue = autoBlock2SZX { autoBlock2SZX = min(6, newValue) } } } //If not nil, Block2 transfer will be used automatically when the payload size exceeds the value 2^(autoBlock2SZX + 4). Valid Values: 0-6.
-    var autoWellKnownCore = true //If set to true, the server will automatically provide responses for the resource "well-known/core" with its current resources.
-    lazy var resources = [SCResourceModel]()
+    public weak var delegate: SCServerDelegate?
+    public var autoBlock2SZX: UInt? = 2 { didSet { if let newValue = autoBlock2SZX { autoBlock2SZX = min(6, newValue) } } } //If not nil, Block2 transfer will be used automatically when the payload size exceeds the value 2^(autoBlock2SZX + 4). Valid Values: 0-6.
+    public var autoWellKnownCore = true //If set to true, the server will automatically provide responses for the resource "well-known/core" with its current resources.
+    public lazy var resources = [SCResourceModel]()
     
     //PRIVATE PROPERTIES
     fileprivate var transportLayerObject: SCCoAPTransportLayerProtocol!
@@ -97,7 +97,7 @@ class SCServer: NSObject {
     
     //Initializer (failable): Starts server on initialization.
     
-    init?(delegate: SCServerDelegate?, transportLayerObject: SCCoAPTransportLayerProtocol = SCCoAPUDPTransportLayer(port: 5683)) {
+    public init?(delegate: SCServerDelegate?, transportLayerObject: SCCoAPTransportLayerProtocol = SCCoAPUDPTransportLayer()) {
         self.delegate = delegate
         super.init()
         self.transportLayerObject = transportLayerObject
@@ -112,21 +112,21 @@ class SCServer: NSObject {
     
     //Start server manually, with the given port
     
-    func start() throws {
+    public func start() throws {
         try self.transportLayerObject?.startListening()
     }
     
     
     //Close UDP socket and server ativity
     
-    func close() {
+    public func close() {
         self.transportLayerObject?.closeTransmission()
     }
     
     
     //Reset Context Information
     
-    func reset() {
+    public func reset() {
         pendingMessagesForEndpoints = [:]
         registeredObserverForResource = [:]
         block1UploadsForEndpoints = [:]
@@ -136,7 +136,7 @@ class SCServer: NSObject {
     
     //Call this method when your resource is ready to process a separate response. The concerned resource must return true for the method `willHandleDataAsynchronouslyForGet(...)`. It is necessary to pass the original message and the resource (both received in `willHandleDataAsynchronouslyForGet`) so that the server is able to retrieve the current context. Additionay, you have to pass the typical "values" tuple which form the response (as described in SCMessage -> SCResourceModel)
     
-    func didCompleteAsynchronousRequestForOriginalMessage(_ message: SCMessage, resource: SCResourceModel, values: (statusCode: SCCodeValue, payloadData: Data?, contentFormat: SCContentFormat?, locationUri: String?)) {
+    public func didCompleteAsynchronousRequestForOriginalMessage(_ message: SCMessage, resource: SCResourceModel, values: (statusCode: SCCodeValue, payloadData: Data?, contentFormat: SCContentFormat?, locationUri: String?)) {
         let type: SCType = message.type == .confirmable ? .confirmable : .nonConfirmable
         if let separateMessage = createMessageForValues((values.statusCode, values.payloadData, values.contentFormat, values.locationUri), withType: type, relatedMessage: message, requestedResource: resource) {
             separateMessage.messageId = UInt16(arc4random_uniform(0xFFFF) &+ 1)
@@ -147,7 +147,7 @@ class SCServer: NSObject {
     
     //Call this method when the given resource has updated its data representation in order to notify all registered users (and has "observable" set to true)
     
-    func updateRegisteredObserversForResource(_ resource: SCResourceModel) {
+    public func updateRegisteredObserversForResource(_ resource: SCResourceModel) {
         if var valueArray = registeredObserverForResource[resource] {
             for i in 0 ..< valueArray.count {
                 let (token, hostname, port, sequenceNumber, prefferredBlock2SZX) = valueArray[i]
@@ -165,7 +165,7 @@ class SCServer: NSObject {
                 setupReliableTransmissionOfMessage(notification, forResource: resource)
             }
         }
-        delegate?.swiftCoapServer(self, willUpdatedObserversForResource: resource)
+        self.delegate?.swiftCoapServer(self, willUpdatedObserversForResource: resource)
     }
     
     
@@ -231,7 +231,7 @@ class SCServer: NSObject {
         let message = userInfoDict["message"] as! SCMessage
         let resource = userInfoDict["resource"] as! SCResourceModel
         sendMessage(message)
-        delegate?.swiftCoapServer(self, didSendSeparateResponseMessage: message, number: retransmissionCount)
+        self.delegate?.swiftCoapServer(self, didSendSeparateResponseMessage: message, number: retransmissionCount)
         
         if let hostname = message.hostName, let port = message.port {
             let wrapper = SCAddressWrapper(hostname: hostname, port: port)
@@ -277,7 +277,7 @@ class SCServer: NSObject {
     }
     
     fileprivate func notifyDelegateWithTransportLayerErrorDescription(_ errorDescription: String) {
-        delegate?.swiftCoapServer(self, didFailWithError: NSError(domain: SCMessage.kCoapErrorDomain, code: 0, userInfo: [NSLocalizedDescriptionKey : errorDescription]))
+        self.delegate?.swiftCoapServer(self, didFailWithError: NSError(domain: SCMessage.kCoapErrorDomain, code: 0, userInfo: [NSLocalizedDescriptionKey : errorDescription]))
     }
     
     fileprivate func removeContextForMessage(_ message: SCMessage) {
@@ -312,7 +312,7 @@ class SCServer: NSObject {
     }
     
     fileprivate func notifyDelegateWithErrorCode(_ clientErrorCode: SCServerErrorCode) {
-        delegate?.swiftCoapServer(self, didFailWithError: NSError(domain: SCMessage.kCoapErrorDomain, code: clientErrorCode.rawValue, userInfo: [NSLocalizedDescriptionKey : clientErrorCode.descriptionString()]))
+        self.delegate?.swiftCoapServer(self, didFailWithError: NSError(domain: SCMessage.kCoapErrorDomain, code: clientErrorCode.rawValue, userInfo: [NSLocalizedDescriptionKey : clientErrorCode.descriptionString()]))
     }
     
     fileprivate func handleBlock2ServerRequirementsForMessage(_ message: SCMessage, preferredBlockSZX: UInt?) {
@@ -529,10 +529,10 @@ class SCServer: NSObject {
         return currentPayload as Data?
     }
     
-    func respondWithErrorCode(_ responseCode: SCCodeValue, diagnosticPayload: Data?, forMessage message: SCMessage, withType type: SCType) {
+    public func respondWithErrorCode(_ responseCode: SCCodeValue, diagnosticPayload: Data?, forMessage message: SCMessage, withType type: SCType) {
         if let hostname = message.hostName, let port = message.port {
             sendMessageWithType(type, code: responseCode, payload: diagnosticPayload, messageId: message.messageId, hostname: hostname, port: port, token: message.token)
-            delegate?.swiftCoapServer(self, didRejectRequestWithCode: message.code, forPath: message.completeUriPath(), withResponseCode: responseCode)
+            self.delegate?.swiftCoapServer(self, didRejectRequestWithCode: message.code, forPath: message.completeUriPath(), withResponseCode: responseCode)
         }
     }
 }
@@ -543,7 +543,7 @@ class SCServer: NSObject {
 // MARK: SC CoAP Transport Layer Delegate
 
 extension SCServer: SCCoAPTransportLayerDelegate {
-    func transportLayerObject(_ transportLayerObject: SCCoAPTransportLayerProtocol, didReceiveData data: Data, fromHost host: String, port: UInt16) {
+    public func transportLayerObject(_ transportLayerObject: SCCoAPTransportLayerProtocol, didReceiveData data: Data, fromHost host: String, port: UInt16) {
         if let message = SCMessage.fromData(data) {
             message.hostName = host
             message.port = port
@@ -611,7 +611,7 @@ extension SCServer: SCCoAPTransportLayerDelegate {
                         if message.type == .confirmable {
                             sendMessageWithType(.acknowledgement, code: SCCodeValue(classValue: 0, detailValue: 00)!, payload: nil, messageId: message.messageId, hostname: host, port: port)
                         }
-                        delegate?.swiftCoapServer(self, didHandleRequestWithCode: message.code, forResource: resultResource, withResponseCode: SCCodeValue(classValue: 0, detailValue: 00)!)
+                        self.delegate?.swiftCoapServer(self, didHandleRequestWithCode: message.code, forResource: resultResource, withResponseCode: SCCodeValue(classValue: 0, detailValue: 00)!)
                         return true
                     }
                     return false
@@ -626,7 +626,7 @@ extension SCServer: SCCoAPTransportLayerDelegate {
                         for etagData in etagValueArray {
                             if etagData == resultResource.etag {
                                 sendMessageWithType(resultType, code: SCCodeSample.valid.codeValue(), payload: nil, messageId: message.messageId, hostname: host, port: port, token: message.token, options: [SCOption.etag.rawValue : [etagData]])
-                                delegate?.swiftCoapServer(self, didHandleRequestWithCode: message.code, forResource: resultResource, withResponseCode: SCCodeSample.valid.codeValue())
+                                self.delegate?.swiftCoapServer(self, didHandleRequestWithCode: message.code, forResource: resultResource, withResponseCode: SCCodeSample.valid.codeValue())
                                 return
                             }
                         }
@@ -676,7 +676,7 @@ extension SCServer: SCCoAPTransportLayerDelegate {
                 
                 if let finalTuple = resultTuple, let responseMessage = createMessageForValues(finalTuple, withType: resultType, relatedMessage: message, requestedResource: resultResource) {
                     sendMessage(responseMessage)
-                    delegate?.swiftCoapServer(self, didHandleRequestWithCode: message.code, forResource: resultResource, withResponseCode: responseMessage.code)
+                    self.delegate?.swiftCoapServer(self, didHandleRequestWithCode: message.code, forResource: resultResource, withResponseCode: responseMessage.code)
                 }
                 else {
                     respondWithErrorCode(SCCodeSample.methodNotAllowed.codeValue(), diagnosticPayload: "Method Not Allowed".data(using: String.Encoding.utf8), forMessage: message, withType: resultType)
@@ -688,7 +688,7 @@ extension SCServer: SCCoAPTransportLayerDelegate {
         }
     }
     
-    func transportLayerObject(_ transportLayerObject: SCCoAPTransportLayerProtocol, didFailWithError error: NSError) {
+    public func transportLayerObject(_ transportLayerObject: SCCoAPTransportLayerProtocol, didFailWithError error: NSError) {
         notifyDelegateWithErrorCode(.transportLayerError)
     }
 }

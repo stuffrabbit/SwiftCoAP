@@ -1,18 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Workspace
    version = "1.0">
-   <FileRef
-      location = "group:README.md">
-   </FileRef>
-   <FileRef
-      location = "group:LICENSE">
-   </FileRef>
-   <FileRef
-      location = "group:SwiftCoAP_Library">
-   </FileRef>
    <Group
       location = "container:"
       name = "Example_Projects">
+      <FileRef
+         location = "group:">
+      </FileRef>
       <FileRef
          location = "group:Example_Projects/SwiftCoAPClientExample/SwiftCoAPClientExample.xcodeproj">
       </FileRef>

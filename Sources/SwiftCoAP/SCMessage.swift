@@ -6,13 +6,15 @@
 //  Copyright (c) 2015 Wojtek Kordylewski. All rights reserved.
 //
 
-import UIKit
+import Foundation
+import Network
+import os.log
 
 
 //MARK:
 //MARK: SC Coap Transport Layer Error Enumeration
 
-enum SCCoAPTransportLayerError: Error {
+public enum SCCoAPTransportLayerError: Error {
     case setupError(errorDescription: String), sendError(errorDescription: String)
 }
 
@@ -20,7 +22,7 @@ enum SCCoAPTransportLayerError: Error {
 //MARK:
 //MARK: SC CoAP Transport Layer Delegate Protocol declaration. It is implemented by SCClient to receive responses. Your custom transport layer handler must call these callbacks to notify the SCClient object.
 
-protocol SCCoAPTransportLayerDelegate: class {
+public protocol SCCoAPTransportLayerDelegate: AnyObject {
     //CoAP Data Received
     func transportLayerObject(_ transportLayerObject: SCCoAPTransportLayerProtocol, didReceiveData data: Data, fromHost host: String, port: UInt16)
     
@@ -32,13 +34,13 @@ protocol SCCoAPTransportLayerDelegate: class {
 //MARK:
 //MARK: SC CoAP Transport Layer Protocol declaration
 
-protocol SCCoAPTransportLayerProtocol: class {
+public protocol SCCoAPTransportLayerProtocol: AnyObject {
     //SCClient uses this property to assign itself as delegate
     var transportLayerDelegate: SCCoAPTransportLayerDelegate! { get set }
     
     //SClient calls this method when it wants to send CoAP data
     func sendCoAPData(_ data: Data, toHost host: String, port: UInt16) throws
-    
+
     //Called when the transmission is over. Clear your states (e.g. close sockets)
     func closeTransmission()
     
@@ -46,62 +48,146 @@ protocol SCCoAPTransportLayerProtocol: class {
     func startListening() throws
 }
 
+struct HostPortKey: Hashable {
+    var host: String
+    var port: UInt16
+}
+
 
 
 //MARK:
 //MARK: SC CoAP UDP Transport Layer: This class is the default transport layer handler, sending data via UDP with help of GCDAsyncUdpSocket. If you want to create a custom transport layer handler, you have to create a custom class and adopt the SCCoAPTransportLayerProtocol. Next you have to pass your class to the init method of SCClient: init(delegate: SCClientDelegate?, transportLayerObject: SCCoAPTransportLayerProtocol). You will than get callbacks to send CoAP data and have to inform your delegate (in this case an object of type SCClient) when you receive a response by using the callbacks from SCCoAPTransportLayerDelegate.
 
-final class SCCoAPUDPTransportLayer: NSObject {
-    weak var transportLayerDelegate: SCCoAPTransportLayerDelegate!
-    var udpSocket: GCDAsyncUdpSocket!
-    var port: UInt16 = 0
-    fileprivate var udpSocketTag: Int = 0
-    
-    convenience init(port: UInt16) {
-        self.init()
-        self.port = port
-    }
-    
-    fileprivate func setUpUdpSocket() -> Bool {
-        udpSocket = GCDAsyncUdpSocket(delegate: self, delegateQueue: DispatchQueue.main)
-        do {
-            try udpSocket!.bind(toPort: port)
-            try udpSocket!.beginReceiving()
-        } catch {
-            return false
+public final class SCCoAPUDPTransportLayer: NSObject {
+    weak public var transportLayerDelegate: SCCoAPTransportLayerDelegate!
+    var connections: [HostPortKey: NWConnection] = [:]
+    var listener: NWListener?
+
+    private func setupStateUpdateHandler(for connection: NWConnection, withHostPort hostPort: HostPortKey) -> NWConnection {
+        connection.stateUpdateHandler = { [weak self] newState in
+            switch newState {
+            case .failed(let error):
+                os_log("Connection FAILED", log: .default, type: .error, "\(error)")
+                self?.connections[hostPort]?.cancel()
+                self?.connections.removeValue(forKey: hostPort)
+                guard let self = self else { return }
+                self.transportLayerDelegate?.transportLayerObject(self, didFailWithError: error as NSError)
+            case .setup:
+                os_log("Connection entered SETUP state", log: .default, type: .info)
+            case .waiting(let reason):
+                os_log("Connection entered WAITING state. Reason %@", log: .default, type: .info, reason.debugDescription)
+            case .preparing:
+                os_log("Connection entered PREPAIRING state", log: .default, type: .info)
+            case .ready:
+                os_log("Connection entered READY state", log: .default, type: .info)
+                guard let self = self else { return }
+                self.startReads(from: connection, withHostPort: hostPort)
+            case .cancelled:
+                os_log("Connection entered is CANCELLED", log: .default, type: .info)
+                self?.connections.removeValue(forKey: hostPort)
+            @unknown default:
+                os_log("Connection is in UNKNOWN state", log: .default, type: .info)
+            }
         }
-        return true
+        return connection
+    }
+
+    private func mustGetConnection(forHost host: String, port: UInt16) -> NWConnection {
+        os_log("Currently %d NWConnection object(s) are alive", connections.count)
+        os_log("Getting connection object for HOST %@, PORT %d", log: .default, type: .info, host, port)
+        let connectionKey = HostPortKey(host: host, port: port)
+        if let connection = connections[connectionKey], connection.state != .cancelled {
+            os_log("Reusing existing NWConnection for HOST %@, PORT %d", log: .default, type: .info, host, port)
+            return connection
+        }
+        let connection = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!, using: .udp)
+        connections[connectionKey] = connection
+        os_log("New NWConnection created for HOST %@, PORT %d", log: .default, type: .info, host, port)
+        return connection
+    }
+
+    private func startReads(from connection: NWConnection, withHostPort hostPort: HostPortKey) {
+        var waitingForNextDatagram = true
+        while connection.state == .ready {
+            if waitingForNextDatagram {
+                waitingForNextDatagram = false
+                connection.receiveMessage { [weak self] data, context, complete, error in
+                    waitingForNextDatagram = true
+                    guard let self = self else { return }
+                    if error != nil {
+                        self.transportLayerDelegate.transportLayerObject(self, didFailWithError: error! as NSError)
+                        return
+                    }
+                    if let data = data {
+                        self.transportLayerDelegate.transportLayerObject(self, didReceiveData: data, fromHost: hostPort.host, port: hostPort.port)
+                    }
+                }
+            }
+        }
     }
 }
 
 extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
-    func sendCoAPData(_ data: Data, toHost host: String, port: UInt16) throws {
-        try startListening()
-        udpSocket.send(data, toHost: host, port: port, withTimeout: 0, tag: udpSocketTag)
-        udpSocketTag = (udpSocketTag % Int.max) + 1
-    }
-    
-    func closeTransmission() {
-        udpSocket.close()
-        udpSocket = nil
-    }
-    
-    func startListening() throws {
-        if udpSocket == nil && !setUpUdpSocket() {
-            udpSocket.close()
-            udpSocket = nil
-            throw SCCoAPTransportLayerError.setupError(errorDescription: "Failed to setup UDP socket")
+    public func sendCoAPData(_ data: Data, toHost host: String, port: UInt16) throws {
+        var connection = mustGetConnection(forHost: host, port: port)
+        let hostPort = HostPortKey(host: host, port: port)
+        if connection.stateUpdateHandler == nil {
+            connection = setupStateUpdateHandler(for: connection, withHostPort: hostPort)
         }
-    }
-}
-
-extension SCCoAPUDPTransportLayer: GCDAsyncUdpSocketDelegate {
-    func udpSocket(_ sock: GCDAsyncUdpSocket!, didReceive data: Data!, fromAddress address: Data!, withFilterContext filterContext: Any!) {
-        transportLayerDelegate.transportLayerObject(self, didReceiveData: data, fromHost: GCDAsyncUdpSocket.host(fromAddress: address), port: GCDAsyncUdpSocket.port(fromAddress: address))
+        if connection.state == .setup {
+            connection.start(queue: DispatchQueue.global(qos: .utility))
+        }
+        connection.send(content: data, completion: .contentProcessed{ [weak self] error in
+            guard let self = self else { return }
+            if error != nil {
+                self.transportLayerDelegate?.transportLayerObject(self, didFailWithError: error! as NSError)
+            }
+        })
     }
     
-    func udpSocket(_ sock: GCDAsyncUdpSocket!, didNotSendDataWithTag tag: Int, dueToError error: Error!) {
-        transportLayerDelegate.transportLayerObject(self, didFailWithError: error as NSError)
+    public func closeTransmission() {
+        connections.forEach{
+            $0.value.cancel()
+        }
+        connections = [:]
+    }
+    
+    public func startListening() throws {
+        listener = try NWListener(using: .udp, on: 5683)
+        listener?.newConnectionHandler = { [weak self] newConnection in
+            guard let self = self else { return }
+            var connection: NWConnection!
+            var hostPort: HostPortKey!
+            switch newConnection.endpoint {
+            case .hostPort(host: let host, port: let port):
+                let port = port.rawValue
+                switch host {
+                case .name(let name, _):
+                    hostPort = HostPortKey(host: name, port: port)
+                    connection = self.setupStateUpdateHandler(for: newConnection, withHostPort: hostPort)
+                case .ipv4(let ip4):
+                    guard let ip = String(data: ip4.rawValue, encoding: .utf8) else { return }
+                    hostPort = HostPortKey(host: ip, port: port)
+                    connection = self.setupStateUpdateHandler(for: newConnection, withHostPort: hostPort)
+                case .ipv6(let ip6):
+                    guard let ip = String(data: ip6.rawValue, encoding: .utf8) else { return }
+                    hostPort = HostPortKey(host: ip, port: port)
+                    connection = self.setupStateUpdateHandler(for: newConnection, withHostPort: hostPort)
+                @unknown default:
+                    return
+                }
+            case .service(name: _, type: _, domain: _, interface: _),
+                 .unix(path: _),
+                 .url(_):
+                return
+            @unknown default:
+                return
+            }
+            connection.start(queue: DispatchQueue.global(qos: .utility))
+            self.startReads(from: newConnection, withHostPort: hostPort)
+            self.connections[hostPort] = connection
+        }
+        listener?.start(queue: DispatchQueue.global(qos: .utility))
     }
 }
 
@@ -109,10 +195,10 @@ extension SCCoAPUDPTransportLayer: GCDAsyncUdpSocketDelegate {
 //MARK:
 //MARK: SC Type Enumeration: Represents the CoAP types
 
-enum SCType: Int {
+public enum SCType: Int {
     case confirmable, nonConfirmable, acknowledgement, reset
     
-    func shortString() -> String {
+    public func shortString() -> String {
         switch self {
         case .confirmable:
             return "CON"
@@ -125,7 +211,7 @@ enum SCType: Int {
         }
     }
     
-    func longString() -> String {
+    public func longString() -> String {
         switch self {
         case .confirmable:
             return "Confirmable"
@@ -138,7 +224,7 @@ enum SCType: Int {
         }
     }
     
-    static func fromShortString(_ string: String) -> SCType? {
+    public static func fromShortString(_ string: String) -> SCType? {
         switch string.uppercased() {
         case "CON":
             return .confirmable
@@ -158,7 +244,7 @@ enum SCType: Int {
 //MARK:
 //MARK: SC Option Enumeration: Represents the CoAP options
 
-enum SCOption: Int {
+public enum SCOption: Int {
     case ifMatch = 1
     case uriHost = 3
     case etag = 4
@@ -181,11 +267,11 @@ enum SCOption: Int {
     
     static let allValues = [ifMatch, uriHost, etag, ifNoneMatch, observe, uriPort, locationPath, uriPath, contentFormat, maxAge, uriQuery, accept, locationQuery, block2, block1, size2, proxyUri, proxyScheme, size1]
     
-    enum Format: Int {
+    public enum Format: Int {
         case empty, opaque, uInt, string
     }
     
-    func toString() -> String {
+    public func toString() -> String {
         switch self {
         case .ifMatch:
             return "If_Match"
@@ -228,31 +314,31 @@ enum SCOption: Int {
         }
     }
     
-    static func isNumberCritical(_ optionNo: Int) -> Bool {
+    public static func isNumberCritical(_ optionNo: Int) -> Bool {
         return optionNo % 2 == 1
     }
     
-    func isCritical() -> Bool {
+    public func isCritical() -> Bool {
         return SCOption.isNumberCritical(self.rawValue)
     }
     
-    static func isNumberUnsafe(_ optionNo: Int) -> Bool {
+    public static func isNumberUnsafe(_ optionNo: Int) -> Bool {
         return optionNo & 0b10 == 0b10
     }
     
-    func isUnsafe() -> Bool {
+    public func isUnsafe() -> Bool {
         return SCOption.isNumberUnsafe(self.rawValue)
     }
     
-    static func isNumberNoCacheKey(_ optionNo: Int) -> Bool {
+    public static func isNumberNoCacheKey(_ optionNo: Int) -> Bool {
         return optionNo & 0b11110 == 0b11100
     }
     
-    func isNoCacheKey() -> Bool {
+    public func isNoCacheKey() -> Bool {
         return SCOption.isNumberNoCacheKey(self.rawValue)
     }
     
-    static func isNumberRepeatable(_ optionNo: Int) -> Bool {
+    public static func isNumberRepeatable(_ optionNo: Int) -> Bool {
         switch optionNo {
         case SCOption.ifMatch.rawValue, SCOption.etag.rawValue, SCOption.locationPath.rawValue, SCOption.uriPath.rawValue, SCOption.uriQuery.rawValue, SCOption.locationQuery.rawValue:
             return true
@@ -261,11 +347,11 @@ enum SCOption: Int {
         }
     }
     
-    func isRepeatable() -> Bool {
+    public func isRepeatable() -> Bool {
         return SCOption.isNumberRepeatable(self.rawValue)
     }
     
-    func format() -> Format {
+    public func format() -> Format {
         switch self {
         case .ifNoneMatch:
             return .empty
@@ -278,11 +364,11 @@ enum SCOption: Int {
         }
     }
     
-    func dataForValueString(_ valueString: String) -> Data? {
+    public func dataForValueString(_ valueString: String) -> Data? {
         return SCOption.dataForOptionValueString(valueString, format: format())
     }
     
-    static func dataForOptionValueString(_ valueString: String, format: Format) -> Data? {
+    public static func dataForOptionValueString(_ valueString: String, format: Format) -> Data? {
         switch format {
         case .empty:
             return nil
@@ -299,11 +385,11 @@ enum SCOption: Int {
         }
     }
     
-    func displayStringForData(_ data: Data?) -> String {
+    public func displayStringForData(_ data: Data?) -> String {
         return SCOption.displayStringForFormat(format(), data: data)
     }
     
-    static func displayStringForFormat(_ format: Format, data: Data?) -> String {
+    public static func displayStringForFormat(_ format: Format, data: Data?) -> String {
         switch format {
         case .empty:
             return "< Empty >"
@@ -330,7 +416,7 @@ enum SCOption: Int {
 //MARK:
 //MARK: SC Code Sample Enumeration: Provides the most common CoAP codes as raw values
 
-enum SCCodeSample: Int {
+public enum SCCodeSample: Int {
     case empty = 0
     case get = 1
     case post = 2
@@ -360,11 +446,11 @@ enum SCCodeSample: Int {
     case gatewayTimeout = 164
     case proxyingNotSupported = 165
     
-    func codeValue() -> SCCodeValue! {
+    public func codeValue() -> SCCodeValue! {
         return SCCodeValue.fromCodeSample(self)
     }
     
-    func toString() -> String {
+    public func toString() -> String {
         switch self {
         case .empty:
             return "Empty"
@@ -425,7 +511,7 @@ enum SCCodeSample: Int {
         }
     }
     
-    static func stringFromCodeValue(_ codeValue: SCCodeValue) -> String? {
+    public static func stringFromCodeValue(_ codeValue: SCCodeValue) -> String? {
         return codeValue.toCodeSample()?.toString()
     }
 }
@@ -434,7 +520,7 @@ enum SCCodeSample: Int {
 //MARK:
 //MARK: SC Content Format Enumeration
 
-enum SCContentFormat: UInt {
+public enum SCContentFormat: UInt {
     case plain = 0
     case linkFormat = 40
     case xml = 41
@@ -443,7 +529,7 @@ enum SCContentFormat: UInt {
     case json = 50
     case cbor = 60
     
-    func needsStringUTF8Conversion() -> Bool {
+    public func needsStringUTF8Conversion() -> Bool {
         switch self {
         case .octetStream, .exi, .cbor:
             return false
@@ -452,7 +538,7 @@ enum SCContentFormat: UInt {
         }
     }
     
-    func toString() -> String {
+    public func toString() -> String {
         switch self {
         case .plain:
             return "Plain"
@@ -476,11 +562,11 @@ enum SCContentFormat: UInt {
 //MARK:
 //MARK: SC Code Value struct: Represents the CoAP code. You can easily apply the CoAP code syntax c.dd (e.g. SCCodeValue(classValue: 0, detailValue: 01) equals 0.01)
 
-struct SCCodeValue: Equatable {
+public struct SCCodeValue: Equatable {
     let classValue: UInt8
     let detailValue: UInt8
     
-    init(rawValue: UInt8) {
+    public init(rawValue: UInt8) {
         let firstBits: UInt8 = rawValue >> 5
         let lastBits: UInt8 = rawValue & 0b00011111
         self.classValue = firstBits
@@ -488,30 +574,30 @@ struct SCCodeValue: Equatable {
     }
     
     //classValue must not be larger than 7; detailValue must not be larger than 31
-    init?(classValue: UInt8, detailValue: UInt8) {
+    public init?(classValue: UInt8, detailValue: UInt8) {
         if classValue > 0b111 || detailValue > 0b11111 { return nil }
         
         self.classValue = classValue
         self.detailValue = detailValue
     }
     
-    func toRawValue() -> UInt8 {
+    public func toRawValue() -> UInt8 {
         return classValue << 5 + detailValue
     }
     
-    func toCodeSample() -> SCCodeSample? {
+    public func toCodeSample() -> SCCodeSample? {
         return SCCodeSample(rawValue: Int(toRawValue()))
     }
     
-    static func fromCodeSample(_ code: SCCodeSample) -> SCCodeValue {
+    public static func fromCodeSample(_ code: SCCodeSample) -> SCCodeValue {
         return SCCodeValue(rawValue: UInt8(code.rawValue))
     }
     
-    func toString() -> String {
+    public func toString() -> String {
         return String(format: "%i.%02d", classValue, detailValue)
     }
     
-    func requestString() -> String? {
+    public func requestString() -> String? {
         switch self {
         case SCCodeValue(classValue: 0, detailValue: 01)!:
             return "GET"
@@ -527,7 +613,7 @@ struct SCCodeValue: Equatable {
     }
 }
 
-func ==(lhs: SCCodeValue, rhs: SCCodeValue) -> Bool {
+public func ==(lhs: SCCodeValue, rhs: SCCodeValue) -> Bool {
     return lhs.classValue == rhs.classValue && lhs.detailValue == rhs.detailValue
 }
 
@@ -535,8 +621,8 @@ func ==(lhs: SCCodeValue, rhs: SCCodeValue) -> Bool {
 //MARK:
 //MARK: UInt Extension
 
-public extension UInt {
-    func toByteArray() -> [UInt8] {
+extension UInt {
+    public func toByteArray() -> [UInt8] {
         let byteLength = UInt(ceil(log2(Double(self + 1)) / 8))
         var byteArray = [UInt8]()
         for i: UInt in 0 ..< byteLength {
@@ -545,7 +631,7 @@ public extension UInt {
         return byteArray
     }
     
-    static func fromData(_ data: Data) -> UInt {
+    public static func fromData(_ data: Data) -> UInt {
         var valueBytes = [UInt8](repeating: 0, count: data.count)
         (data as NSData).getBytes(&valueBytes, length: data.count)
         
@@ -585,13 +671,13 @@ extension Data {
 //MARK:
 //MARK: SC Allowed Route Enumeration
 
-enum SCAllowedRoute: UInt {
+public enum SCAllowedRoute: UInt {
     case get = 0b1
     case post = 0b10
     case put = 0b100
     case delete = 0b1000
     
-    init?(codeValue: SCCodeValue) {
+    public init?(codeValue: SCCodeValue) {
         switch codeValue {
         case SCCodeValue(classValue: 0, detailValue: 01)!:
             self = .get
@@ -610,12 +696,12 @@ enum SCAllowedRoute: UInt {
 //MARK:
 //MARK: Resource Implementation, used for SCServer
 
-class SCResourceModel: NSObject {
-    let name: String // Name of the resource
-    let allowedRoutes: UInt // Bitmask of allowed routes (see SCAllowedRoutes enum)
-    var maxAgeValue: UInt! // If not nil, every response will contain the provided MaxAge value
+open class SCResourceModel: NSObject {
+    public let name: String // Name of the resource
+    public let allowedRoutes: UInt // Bitmask of allowed routes (see SCAllowedRoutes enum)
+    public var maxAgeValue: UInt! // If not nil, every response will contain the provided MaxAge value
     fileprivate(set) var etag: Data! // If not nil, every response to a GET request will contain the provided eTag. The etag is generated automatically whenever you update the dataRepresentation of the resource
-    var dataRepresentation: Data! {
+    public var dataRepresentation: Data! {
         didSet {
             if var hashInt = dataRepresentation?.hashValue {
                 etag = Data(bytes: &hashInt, count: MemoryLayout<Int>.size)
@@ -625,10 +711,10 @@ class SCResourceModel: NSObject {
             }
         }
     }// The current data representation of the resource. Needs to stay up to date
-    var observable = false // If true, a response will contain the Observe option, and endpoints will be able to register as observers in SCServer. Call updateRegisteredObserversForResource(self), anytime your dataRepresentation changes.
+    public var observable = false // If true, a response will contain the Observe option, and endpoints will be able to register as observers in SCServer. Call updateRegisteredObserversForResource(self), anytime your dataRepresentation changes.
     
     //Desigated initializer
-    init(name: String, allowedRoutes: UInt) {
+    public init(name: String, allowedRoutes: UInt) {
         self.name = name
         self.allowedRoutes = allowedRoutes
     }
@@ -640,20 +726,20 @@ class SCResourceModel: NSObject {
     
     
     //This method lets you decide whether the current request shall be processed asynchronously, i.e. if true will be returned, an empty ACK will be sent, and you can provide the actual response by calling the servers "didCompleteAsynchronousRequestForOriginalMessage(...)". Note: "dataForGet", "dataForPost", etc. will not be called additionally if you return true.
-    func willHandleDataAsynchronouslyForRoute(_ route: SCAllowedRoute, queryDictionary: [String : String], options: [Int : [Data]], originalMessage: SCMessage) -> Bool { return false }
+    open func willHandleDataAsynchronouslyForRoute(_ route: SCAllowedRoute, queryDictionary: [String : String], options: [Int : [Data]], originalMessage: SCMessage) -> Bool { return false }
     
     //The following methods require data for the given routes GET, POST, PUT, DELETE and must be overriden if needed. If you return nil, the server will respond with a "Method not allowed" error code (Make sure that you have set the allowed routes in the "allowedRoutes" bitmask property).
     //You have to return a tuple with a statuscode, optional payload, optional content format for your provided payload and (in case of POST and PUT) an optional locationURI.
-    func dataForGet(queryDictionary: [String : String], options: [Int : [Data]]) -> (statusCode: SCCodeValue, payloadData: Data?, contentFormat: SCContentFormat?)? { return nil }
-    func dataForPost(queryDictionary: [String : String], options: [Int : [Data]], requestData: Data?) -> (statusCode: SCCodeValue, payloadData: Data?, contentFormat: SCContentFormat?, locationUri: String?)? { return nil }
-    func dataForPut(queryDictionary: [String : String], options: [Int : [Data]], requestData: Data?) -> (statusCode: SCCodeValue, payloadData: Data?, contentFormat: SCContentFormat?, locationUri: String?)? { return nil }
-    func dataForDelete(queryDictionary: [String : String], options: [Int : [Data]]) -> (statusCode: SCCodeValue, payloadData: Data?, contentFormat: SCContentFormat?)? { return nil }
+    open func dataForGet(queryDictionary: [String : String], options: [Int : [Data]]) -> (statusCode: SCCodeValue, payloadData: Data?, contentFormat: SCContentFormat?)? { return nil }
+    open func dataForPost(queryDictionary: [String : String], options: [Int : [Data]], requestData: Data?) -> (statusCode: SCCodeValue, payloadData: Data?, contentFormat: SCContentFormat?, locationUri: String?)? { return nil }
+    open func dataForPut(queryDictionary: [String : String], options: [Int : [Data]], requestData: Data?) -> (statusCode: SCCodeValue, payloadData: Data?, contentFormat: SCContentFormat?, locationUri: String?)? { return nil }
+    open func dataForDelete(queryDictionary: [String : String], options: [Int : [Data]]) -> (statusCode: SCCodeValue, payloadData: Data?, contentFormat: SCContentFormat?)? { return nil }
 }
 
 //MARK:
 //MARK: SC Message IMPLEMENTATION
 
-class SCMessage: NSObject {
+public class SCMessage: NSObject {
     
     //MARK: Constants and Properties
     
@@ -673,32 +759,32 @@ class SCMessage: NSObject {
     
     //INTERNAL PROPERTIES (allowed to modify)
     
-    var code: SCCodeValue = SCCodeValue(classValue: 0, detailValue: 0)! //Code value is Empty by default
-    var type: SCType = .confirmable //Type is CON by default
-    var payload: Data? //Add a payload (optional)
-    lazy var options = [Int: [Data]]() //CoAP-Options. It is recommend to use the addOption(..) method to add a new option.
+    public var code: SCCodeValue = SCCodeValue(classValue: 0, detailValue: 0)! //Code value is Empty by default
+    public var type: SCType = .confirmable //Type is CON by default
+    public var payload: Data? //Add a payload (optional)
+    public lazy var options = [Int: [Data]]() //CoAP-Options. It is recommend to use the addOption(..) method to add a new option.
     
     //The following properties are modified by SCClient/SCServer. Modification has no effect and is therefore not recommended
     var blockBody: Data? //Helper for Block1 tranmission. Used by SCClient, modification has no effect
-    var hostName: String?
-    var port: UInt16?
-    var resourceForConfirmableResponse: SCResourceModel?
-    var messageId: UInt16!
-    var token: UInt64 = 0
+    public var hostName: String?
+    public var port: UInt16?
+    public var resourceForConfirmableResponse: SCResourceModel?
+    public var messageId: UInt16!
+    public var token: UInt64 = 0
     
     var timeStamp: Date?
     
     
     //MARK: Internal Methods (allowed to use)
     
-    convenience init(code: SCCodeValue, type: SCType, payload: Data?) {
+    public convenience init(code: SCCodeValue, type: SCType, payload: Data?) {
         self.init()
         self.code = code
         self.type = type
         self.payload = payload
     }
     
-    func equalForCachingWithMessage(_ message: SCMessage) -> Bool {
+    public func equalForCachingWithMessage(_ message: SCMessage) -> Bool {
         if code == message.code && hostName == message.hostName && port == message.port {
             let firstSet = Set(options.keys)
             let secondSet = Set(message.options.keys)
@@ -719,7 +805,7 @@ class SCMessage: NSObject {
         return false
     }
     
-    static func compareOptionValueArrays(_ first: [Data], second: [Data]) -> Bool {
+    public static func compareOptionValueArrays(_ first: [Data], second: [Data]) -> Bool {
         if first.count != second.count { return false }
         
         for i in 0 ..< first.count {
@@ -729,7 +815,7 @@ class SCMessage: NSObject {
         return true
     }
     
-    static func copyFromMessage(_ message: SCMessage) -> SCMessage {
+    public static func copyFromMessage(_ message: SCMessage) -> SCMessage {
         let copiedMessage = SCMessage(code: message.code, type: message.type, payload: message.payload)
         copiedMessage.options = message.options
         copiedMessage.hostName = message.hostName
@@ -740,7 +826,7 @@ class SCMessage: NSObject {
         return copiedMessage
     }
     
-    func isFresh() -> Bool {
+    public func isFresh() -> Bool {
         func validateMaxAge(_ value: UInt) -> Bool {
             if let tStamp = timeStamp {
                 let expirationDate = tStamp.addingTimeInterval(Double(value))
@@ -756,7 +842,7 @@ class SCMessage: NSObject {
         return validateMaxAge(kDefaultMaxAgeValue)
     }
     
-    func addOption(_ option: Int, data: Data) {
+    public func addOption(_ option: Int, data: Data) {
         if var currentOptionValue = options[option] {
             currentOptionValue.append(data)
             options[option] = currentOptionValue
@@ -766,7 +852,7 @@ class SCMessage: NSObject {
         }
     }
     
-    func toData() -> Data? {
+    public func toData() -> Data? {
         var resultData: NSMutableData
         
         let tokenLength = Int(ceil(log2(Double(token + 1)) / 8))
@@ -854,7 +940,7 @@ class SCMessage: NSObject {
         return resultData as Data
     }
     
-    static func fromData(_ data: Data) -> SCMessage? {
+    public static func fromData(_ data: Data) -> SCMessage? {
         if data.count < 4 { return nil }
         //print("parsing Message FROM Data: \(data)")
         //Unparse Header
@@ -944,7 +1030,7 @@ class SCMessage: NSObject {
         return message
     }
     
-    func toHttpUrlRequestWithUrl() -> NSMutableURLRequest {
+    public func toHttpUrlRequestWithUrl() -> NSMutableURLRequest {
         let urlRequest = NSMutableURLRequest()
         if code != SCCodeSample.get.codeValue() {
             urlRequest.httpMethod = code.requestString()!
@@ -962,7 +1048,7 @@ class SCMessage: NSObject {
         return urlRequest
     }
     
-    static func fromHttpUrlResponse(_ urlResponse: HTTPURLResponse, data: Data!) -> SCMessage {
+    public static func fromHttpUrlResponse(_ urlResponse: HTTPURLResponse, data: Data!) -> SCMessage {
         let message = SCMessage()
         message.payload = data
         message.code = SCCodeValue(rawValue: UInt8(urlResponse.statusCode & 0xff))
@@ -982,7 +1068,7 @@ class SCMessage: NSObject {
         return message
     }
     
-    func completeUriPath() -> String {
+    public func completeUriPath() -> String {
         var finalPathString: String = ""
         if let pathDataArray = options[SCOption.uriPath.rawValue] {
             for i in 0 ..< pathDataArray.count {
@@ -995,7 +1081,7 @@ class SCMessage: NSObject {
         return finalPathString
     }
     
-    func uriQueryDictionary() -> [String : String] {
+    public func uriQueryDictionary() -> [String : String] {
         var resultDict = [String : String]()
         if let queryDataArray = options[SCOption.uriQuery.rawValue] {
             for queryData in queryDataArray {
@@ -1010,7 +1096,7 @@ class SCMessage: NSObject {
         return resultDict
     }
     
-    static func getPathAndQueryDataArrayFromUriString(_ uriString: String) -> (pathDataArray: [Data], queryDataArray: [Data])? {
+    public static func getPathAndQueryDataArrayFromUriString(_ uriString: String) -> (pathDataArray: [Data], queryDataArray: [Data])? {
         
         func dataArrayFromString(_ string: String!, withSeparator separator: String) -> [Data] {
             var resultDataArray = [Data]()
@@ -1036,18 +1122,18 @@ class SCMessage: NSObject {
         return nil
     }
     
-    func inferredContentFormat() -> SCContentFormat {
+    public func inferredContentFormat() -> SCContentFormat {
         guard let contentFormatArray = options[SCOption.contentFormat.rawValue], let contentFormatData = contentFormatArray.first, let contentFormat = SCContentFormat(rawValue: UInt.fromData(contentFormatData)) else { return .plain }
         return contentFormat
     }
     
-    func payloadRepresentationString() -> String {
+    public func payloadRepresentationString() -> String {
         guard let payloadData = self.payload else { return "" }
         
         return SCMessage.payloadRepresentationStringForData(payloadData, contentFormat: inferredContentFormat())
     }
     
-    static func payloadRepresentationStringForData(_ data: Data, contentFormat: SCContentFormat) -> String {
+    public static func payloadRepresentationStringForData(_ data: Data, contentFormat: SCContentFormat) -> String {
         if contentFormat.needsStringUTF8Conversion() {
             return (NSString(data: data, encoding: String.Encoding.utf8.rawValue) as String?) ?? "Format Error"
         }

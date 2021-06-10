@@ -3,18 +3,16 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 46;
+	objectVersion = 52;
 	objects = {
 
 /* Begin PBXBuildFile section */
+		49B812B7267088A900E842E6 /* SwiftCoAP in Frameworks */ = {isa = PBXBuildFile; productRef = 49B812B6267088A900E842E6 /* SwiftCoAP */; };
 		9316D79C1B2AE54400B0B70D /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9316D79B1B2AE54400B0B70D /* AppDelegate.swift */; };
 		9316D7A11B2AE54400B0B70D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 9316D79F1B2AE54400B0B70D /* Main.storyboard */; };
 		9316D7A31B2AE54400B0B70D /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9316D7A21B2AE54400B0B70D /* Images.xcassets */; };
 		9316D7A61B2AE54400B0B70D /* LaunchScreen.xib in Resources */ = {isa = PBXBuildFile; fileRef = 9316D7A41B2AE54400B0B70D /* LaunchScreen.xib */; };
 		9316D7B21B2AE54400B0B70D /* SwiftCoAPServerExampleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9316D7B11B2AE54400B0B70D /* SwiftCoAPServerExampleTests.swift */; };
-		9316D7C11B2AE89600B0B70D /* GCDAsyncUdpSocket.m in Sources */ = {isa = PBXBuildFile; fileRef = 9316D7BE1B2AE89600B0B70D /* GCDAsyncUdpSocket.m */; };
-		9316D7C21B2AE89600B0B70D /* SCMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9316D7BF1B2AE89600B0B70D /* SCMessage.swift */; };
-		9316D7C31B2AE89600B0B70D /* SCServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9316D7C01B2AE89600B0B70D /* SCServer.swift */; };
 		9316D7C51B2AE8C600B0B70D /* ExampleViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9316D7C41B2AE8C600B0B70D /* ExampleViewController.swift */; };
 		9316D7CA1B2C40C000B0B70D /* DefaultTableViewCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9316D7C91B2C40C000B0B70D /* DefaultTableViewCell.swift */; };
 		936CD06E1B3963580041837F /* TimeResourceModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 936CD06D1B3963580041837F /* TimeResourceModel.swift */; };
@@ -42,11 +40,6 @@
 		9316D7AB1B2AE54400B0B70D /* SwiftCoAPServerExampleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SwiftCoAPServerExampleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		9316D7B01B2AE54400B0B70D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		9316D7B11B2AE54400B0B70D /* SwiftCoAPServerExampleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftCoAPServerExampleTests.swift; sourceTree = "<group>"; };
-		9316D7BC1B2AE89500B0B70D /* SwiftCoAPServerExample-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "SwiftCoAPServerExample-Bridging-Header.h"; sourceTree = "<group>"; };
-		9316D7BD1B2AE89600B0B70D /* GCDAsyncUdpSocket.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GCDAsyncUdpSocket.h; sourceTree = "<group>"; };
-		9316D7BE1B2AE89600B0B70D /* GCDAsyncUdpSocket.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GCDAsyncUdpSocket.m; sourceTree = "<group>"; };
-		9316D7BF1B2AE89600B0B70D /* SCMessage.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SCMessage.swift; sourceTree = "<group>"; };
-		9316D7C01B2AE89600B0B70D /* SCServer.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SCServer.swift; sourceTree = "<group>"; };
 		9316D7C41B2AE8C600B0B70D /* ExampleViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ExampleViewController.swift; sourceTree = "<group>"; };
 		9316D7C91B2C40C000B0B70D /* DefaultTableViewCell.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DefaultTableViewCell.swift; sourceTree = "<group>"; };
 		936CD06D1B3963580041837F /* TimeResourceModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TimeResourceModel.swift; sourceTree = "<group>"; };
@@ -59,6 +52,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				49B812B7267088A900E842E6 /* SwiftCoAP in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -93,7 +87,6 @@
 		9316D7981B2AE54400B0B70D /* SwiftCoAPServerExample */ = {
 			isa = PBXGroup;
 			children = (
-				9316D7BB1B2AE59300B0B70D /* SwiftCoAPLibrary */,
 				9316D79B1B2AE54400B0B70D /* AppDelegate.swift */,
 				9316D7C41B2AE8C600B0B70D /* ExampleViewController.swift */,
 				9316D7C91B2C40C000B0B70D /* DefaultTableViewCell.swift */,
@@ -131,18 +124,6 @@
 			name = "Supporting Files";
 			sourceTree = "<group>";
 		};
-		9316D7BB1B2AE59300B0B70D /* SwiftCoAPLibrary */ = {
-			isa = PBXGroup;
-			children = (
-				9316D7BD1B2AE89600B0B70D /* GCDAsyncUdpSocket.h */,
-				9316D7BE1B2AE89600B0B70D /* GCDAsyncUdpSocket.m */,
-				9316D7BF1B2AE89600B0B70D /* SCMessage.swift */,
-				9316D7C01B2AE89600B0B70D /* SCServer.swift */,
-				9316D7BC1B2AE89500B0B70D /* SwiftCoAPServerExample-Bridging-Header.h */,
-			);
-			name = SwiftCoAPLibrary;
-			sourceTree = "<group>";
-		};
 		9316D7C61B2AE8E600B0B70D /* CoAPServer Resource Models */ = {
 			isa = PBXGroup;
 			children = (
@@ -169,6 +150,9 @@
 			dependencies = (
 			);
 			name = SwiftCoAPServerExample;
+			packageProductDependencies = (
+				49B812B6267088A900E842E6 /* SwiftCoAP */,
+			);
 			productName = SwiftCoAPServerExample;
 			productReference = 9316D7961B2AE54400B0B70D /* SwiftCoAPServerExample.app */;
 			productType = "com.apple.product-type.application";
@@ -203,7 +187,7 @@
 				TargetAttributes = {
 					9316D7951B2AE54400B0B70D = {
 						CreatedOnToolsVersion = 6.3.2;
-						LastSwiftMigration = 1010;
+						LastSwiftMigration = 1250;
 					};
 					9316D7AA1B2AE54400B0B70D = {
 						CreatedOnToolsVersion = 6.3.2;
@@ -217,10 +201,14 @@
 			developmentRegion = English;
 			hasScannedForEncodings = 0;
 			knownRegions = (
+				English,
 				en,
 				Base,
 			);
 			mainGroup = 9316D78D1B2AE54400B0B70D;
+			packageReferences = (
+				49B812B5267088A900E842E6 /* XCRemoteSwiftPackageReference "SwiftCoAP" */,
+			);
 			productRefGroup = 9316D7971B2AE54400B0B70D /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -256,11 +244,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				9316D7C31B2AE89600B0B70D /* SCServer.swift in Sources */,
 				936CD0701B3963A40041837F /* SeparateResourceModel.swift in Sources */,
 				936CD06E1B3963580041837F /* TimeResourceModel.swift in Sources */,
-				9316D7C21B2AE89600B0B70D /* SCMessage.swift in Sources */,
-				9316D7C11B2AE89600B0B70D /* GCDAsyncUdpSocket.m in Sources */,
 				9316D79C1B2AE54400B0B70D /* AppDelegate.swift in Sources */,
 				9316D7C51B2AE8C600B0B70D /* ExampleViewController.swift in Sources */,
 				9316D7CA1B2C40C000B0B70D /* DefaultTableViewCell.swift in Sources */,
@@ -353,7 +338,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 8.3;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
@@ -402,10 +387,11 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 8.3;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
-				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALIDATE_PRODUCT = YES;
 			};
@@ -418,13 +404,16 @@
 				CLANG_ENABLE_MODULES = YES;
 				DEVELOPMENT_TEAM = "";
 				INFOPLIST_FILE = SwiftCoAPServerExample/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = "kordylewski.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_OBJC_BRIDGING_HEADER = "SwiftCoAPServerExample/SwiftCoAPServerExample-Bridging-Header.h";
+				SWIFT_OBJC_BRIDGING_HEADER = "";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
-				SWIFT_VERSION = 4.2;
+				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
 		};
@@ -435,12 +424,15 @@
 				CLANG_ENABLE_MODULES = YES;
 				DEVELOPMENT_TEAM = "";
 				INFOPLIST_FILE = SwiftCoAPServerExample/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = "kordylewski.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_OBJC_BRIDGING_HEADER = "SwiftCoAPServerExample/SwiftCoAPServerExample-Bridging-Header.h";
+				SWIFT_OBJC_BRIDGING_HEADER = "";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
-				SWIFT_VERSION = 4.2;
+				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
 		};
@@ -458,7 +450,11 @@
 					"$(inherited)",
 				);
 				INFOPLIST_FILE = SwiftCoAPServerExampleTests/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = "kordylewski.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
@@ -477,7 +473,11 @@
 					"$(inherited)",
 				);
 				INFOPLIST_FILE = SwiftCoAPServerExampleTests/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = "kordylewski.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
@@ -517,6 +517,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		49B812B5267088A900E842E6 /* XCRemoteSwiftPackageReference "SwiftCoAP" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/namiai/SwiftCoAP";
+			requirement = {
+				branch = master;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		49B812B6267088A900E842E6 /* SwiftCoAP */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 49B812B5267088A900E842E6 /* XCRemoteSwiftPackageReference "SwiftCoAP" */;
+			productName = SwiftCoAP;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 9316D78E1B2AE54400B0B70D /* Project object */;
 }

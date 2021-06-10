@@ -1,8 +1,6 @@
 SwiftCoAP
 =====
-**Updated for Swift 4.2**
-
-**NEW:** Download the Client-Implementation **myCoAP** for iOS/watchOS which builds upon this library: [AppStore-Link](https://itunes.apple.com/de/app/mycoap/id1048383045?mt=8)
+Download the Client-Implementation **myCoAP** for iOS/watchOS which builds upon this library: [AppStore-Link](https://itunes.apple.com/de/app/mycoap/id1048383045?mt=8)
 
 This project is an implementation of the "Constrained Application Protocol" (CoAP - RFC 7252) in Swift. It is intended for Clients and Servers.
 This implementation provides the standard CoAP features (including Caching) along with the extensions:
@@ -16,14 +14,17 @@ Feedback is highly appreciated!
 
 Want an Objective-C implementation? Checkout [iCoAP](https://github.com/stuffrabbit/iCoAP).
 
+Transport layer converted from aging `GCDAsyncUdpSocket` to Apple's `Network.framework`. No more use of deprecated APIs.
+
 Getting Started
 =====
 
-###The Files:
-* Copy all files included in the `SwiftCoAP_Library` folder to your Xcode project
-* Make sure to add `GCDAsyncUdpSocket.h` to your Objective-C Bridging-File, as this project uses the Objective-C-Library CocoaAsyncSocket for UDP communication
+### The Package:
+```swift
+.package(url: "https://github.com/namiai/SwiftCoAP.git", .branch("master"))
+```
 
-###The Code
+### The Code
 
 This section gives you an impression on how to use the provided data structures.
 
@@ -92,7 +93,7 @@ An (real) example where using a custom transport layer functionality would be he
 You cannot use UDP, e.g. when you bring this library to WatchOS 2. As UDP communcation is not available on this OS you can use WatchConnectiviy as transport layer object for your `SCClient` and let the iPhone execute the UDP sendings. 
 #### SCServer
 
-This class represents a CoAP server, which can be initialized with the standard designated initializer `init()`. The given convenience initializer `init?(port: UInt16)` initializes a server instance and automatically starts listening on the given port. This initialization can fail if a UDP-socket error occurs.
+This class represents a CoAP server, which can be initialized with the standard designated initializer `init()`. The given convenience initializer `init?(port: UInt16)` initializes a server instance and automatically starts listening on the given port. 
 
 ##### Properties
 
@@ -154,9 +155,8 @@ Examples:
 =====
 Make sure to take a look at the examples, which show the library in action. Let me know if you have questions, or other issues.
 
-
-Used Libraries:
+Editing the Project
 =====
- This version uses the public domain licensed CocoaAsyncSocket library 
- for UDP-socket networking.
- [Click here](https://github.com/robbiehanson/CocoaAsyncSocket) for more information.
+To edit the project it would be convenient to open `SwiftCoAP.xcworkspace` in Xcode. This way it'll open both Client and Server example implementations targets and the Package. You may also want to edit the library code separately. In such a case just open `Package.swift` with Xcode.
+
+

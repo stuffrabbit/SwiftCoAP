@@ -3,18 +3,16 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 46;
+	objectVersion = 52;
 	objects = {
 
 /* Begin PBXBuildFile section */
+		49B812B42670889300E842E6 /* SwiftCoAP in Frameworks */ = {isa = PBXBuildFile; productRef = 49B812B32670889300E842E6 /* SwiftCoAP */; };
 		934E12081B1F858100441526 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 934E12071B1F858100441526 /* AppDelegate.swift */; };
 		934E120D1B1F858100441526 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 934E120B1B1F858100441526 /* Main.storyboard */; };
 		934E120F1B1F858100441526 /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 934E120E1B1F858100441526 /* Images.xcassets */; };
 		934E12121B1F858100441526 /* LaunchScreen.xib in Resources */ = {isa = PBXBuildFile; fileRef = 934E12101B1F858100441526 /* LaunchScreen.xib */; };
 		934E121E1B1F858100441526 /* SwiftCoAPClientExampleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 934E121D1B1F858100441526 /* SwiftCoAPClientExampleTests.swift */; };
-		934E122D1B1F865100441526 /* GCDAsyncUdpSocket.m in Sources */ = {isa = PBXBuildFile; fileRef = 934E122A1B1F865100441526 /* GCDAsyncUdpSocket.m */; };
-		934E122E1B1F865100441526 /* SCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 934E122B1B1F865100441526 /* SCClient.swift */; };
-		934E122F1B1F865100441526 /* SCMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 934E122C1B1F865100441526 /* SCMessage.swift */; };
 		934E12311B1F8A2800441526 /* ExampleViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 934E12301B1F8A2800441526 /* ExampleViewController.swift */; };
 /* End PBXBuildFile section */
 
@@ -38,11 +36,6 @@
 		934E12171B1F858100441526 /* SwiftCoAPClientExampleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SwiftCoAPClientExampleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		934E121C1B1F858100441526 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		934E121D1B1F858100441526 /* SwiftCoAPClientExampleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftCoAPClientExampleTests.swift; sourceTree = "<group>"; };
-		934E12281B1F865000441526 /* SwiftCoAPClientExample-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "SwiftCoAPClientExample-Bridging-Header.h"; sourceTree = "<group>"; };
-		934E12291B1F865100441526 /* GCDAsyncUdpSocket.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GCDAsyncUdpSocket.h; sourceTree = "<group>"; };
-		934E122A1B1F865100441526 /* GCDAsyncUdpSocket.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GCDAsyncUdpSocket.m; sourceTree = "<group>"; };
-		934E122B1B1F865100441526 /* SCClient.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SCClient.swift; sourceTree = "<group>"; };
-		934E122C1B1F865100441526 /* SCMessage.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SCMessage.swift; sourceTree = "<group>"; };
 		934E12301B1F8A2800441526 /* ExampleViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ExampleViewController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -51,6 +44,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				49B812B42670889300E842E6 /* SwiftCoAP in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -85,7 +79,6 @@
 		934E12041B1F858100441526 /* SwiftCoAPClientExample */ = {
 			isa = PBXGroup;
 			children = (
-				934E12271B1F862600441526 /* SwiftCoAP Library */,
 				934E12071B1F858100441526 /* AppDelegate.swift */,
 				934E12301B1F8A2800441526 /* ExampleViewController.swift */,
 				934E120B1B1F858100441526 /* Main.storyboard */,
@@ -121,18 +114,6 @@
 			name = "Supporting Files";
 			sourceTree = "<group>";
 		};
-		934E12271B1F862600441526 /* SwiftCoAP Library */ = {
-			isa = PBXGroup;
-			children = (
-				934E12291B1F865100441526 /* GCDAsyncUdpSocket.h */,
-				934E122A1B1F865100441526 /* GCDAsyncUdpSocket.m */,
-				934E122B1B1F865100441526 /* SCClient.swift */,
-				934E122C1B1F865100441526 /* SCMessage.swift */,
-				934E12281B1F865000441526 /* SwiftCoAPClientExample-Bridging-Header.h */,
-			);
-			name = "SwiftCoAP Library";
-			sourceTree = "<group>";
-		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -149,6 +130,9 @@
 			dependencies = (
 			);
 			name = SwiftCoAPClientExample;
+			packageProductDependencies = (
+				49B812B32670889300E842E6 /* SwiftCoAP */,
+			);
 			productName = SwiftCoAPClientExample;
 			productReference = 934E12021B1F858100441526 /* SwiftCoAPClientExample.app */;
 			productType = "com.apple.product-type.application";
@@ -178,29 +162,32 @@
 			isa = PBXProject;
 			attributes = {
 				LastSwiftUpdateCheck = 0700;
-				LastUpgradeCheck = 1010;
+				LastUpgradeCheck = 1250;
 				ORGANIZATIONNAME = "Wojtek Kordylewski";
 				TargetAttributes = {
 					934E12011B1F858100441526 = {
 						CreatedOnToolsVersion = 6.3.2;
-						LastSwiftMigration = 1010;
+						LastSwiftMigration = 1250;
 					};
 					934E12161B1F858100441526 = {
 						CreatedOnToolsVersion = 6.3.2;
-						LastSwiftMigration = 1010;
+						LastSwiftMigration = 1250;
 						TestTargetID = 934E12011B1F858100441526;
 					};
 				};
 			};
 			buildConfigurationList = 934E11FD1B1F858100441526 /* Build configuration list for PBXProject "SwiftCoAPClientExample" */;
 			compatibilityVersion = "Xcode 3.2";
-			developmentRegion = English;
+			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
 				Base,
 			);
 			mainGroup = 934E11F91B1F858100441526;
+			packageReferences = (
+				49B812B22670889300E842E6 /* XCRemoteSwiftPackageReference "SwiftCoAP" */,
+			);
 			productRefGroup = 934E12031B1F858100441526 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -236,9 +223,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				934E122D1B1F865100441526 /* GCDAsyncUdpSocket.m in Sources */,
-				934E122F1B1F865100441526 /* SCMessage.swift in Sources */,
-				934E122E1B1F865100441526 /* SCClient.swift in Sources */,
 				934E12081B1F858100441526 /* AppDelegate.swift in Sources */,
 				934E12311B1F8A2800441526 /* ExampleViewController.swift in Sources */,
 			);
@@ -286,6 +270,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
 				CLANG_CXX_LIBRARY = "libc++";
 				CLANG_ENABLE_MODULES = YES;
@@ -304,6 +289,7 @@
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
 				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
 				CLANG_WARN_STRICT_PROTOTYPES = YES;
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
@@ -329,7 +315,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 8.3;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
@@ -342,6 +328,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
 				CLANG_CXX_LIBRARY = "libc++";
 				CLANG_ENABLE_MODULES = YES;
@@ -360,6 +347,7 @@
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
 				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
 				CLANG_WARN_STRICT_PROTOTYPES = YES;
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
@@ -378,10 +366,11 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 8.3;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
-				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALIDATE_PRODUCT = YES;
 			};
@@ -392,14 +381,19 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				DEVELOPMENT_TEAM = PTKKJUD9AS;
 				INFOPLIST_FILE = SwiftCoAPClientExample/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = "kordylewski.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_OBJC_BRIDGING_HEADER = "SwiftCoAPClientExample/SwiftCoAPClientExample-Bridging-Header.h";
+				SWIFT_OBJC_BRIDGING_HEADER = "";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
-				SWIFT_VERSION = 4.2;
+				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
 		};
@@ -408,13 +402,18 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				DEVELOPMENT_TEAM = PTKKJUD9AS;
 				INFOPLIST_FILE = SwiftCoAPClientExample/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = "kordylewski.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_OBJC_BRIDGING_HEADER = "SwiftCoAPClientExample/SwiftCoAPClientExample-Bridging-Header.h";
+				SWIFT_OBJC_BRIDGING_HEADER = "";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
-				SWIFT_VERSION = 4.2;
+				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
 		};
@@ -431,11 +430,15 @@
 					"$(inherited)",
 				);
 				INFOPLIST_FILE = SwiftCoAPClientExampleTests/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = "kordylewski.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
-				SWIFT_VERSION = 4.2;
+				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SwiftCoAPClientExample.app/SwiftCoAPClientExample";
 			};
 			name = Debug;
@@ -449,11 +452,15 @@
 					"$(inherited)",
 				);
 				INFOPLIST_FILE = SwiftCoAPClientExampleTests/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = "kordylewski.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
-				SWIFT_VERSION = 4.2;
+				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SwiftCoAPClientExample.app/SwiftCoAPClientExample";
 			};
 			name = Release;
@@ -489,6 +496,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		49B812B22670889300E842E6 /* XCRemoteSwiftPackageReference "SwiftCoAP" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/namiai/SwiftCoAP";
+			requirement = {
+				branch = master;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		49B812B32670889300E842E6 /* SwiftCoAP */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 49B812B22670889300E842E6 /* XCRemoteSwiftPackageReference "SwiftCoAP" */;
+			productName = SwiftCoAP;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 934E11FA1B1F858100441526 /* Project object */;
 }

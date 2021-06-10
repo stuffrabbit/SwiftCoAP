@@ -7,6 +7,7 @@
 //
 
 import UIKit
+import SwiftCoAP
 
 class TestResourceModel: SCResourceModel {
     //Individual Properties

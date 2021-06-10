@@ -11,23 +11,23 @@ import UIKit
 //MARK:
 //MARK: SC Client Delegate Protocol declaration
 
-@objc protocol SCClientDelegate {
+public protocol SCClientDelegate: AnyObject {
     
     //Tells the delegate that a valid CoAP message was received
     func swiftCoapClient(_ client: SCClient, didReceiveMessage message: SCMessage)
     
     //Tells the delegate that an error occured during or before transmission (refer to the "SCClientErrorCode" Enum)
-    @objc optional func swiftCoapClient(_ client: SCClient, didFailWithError error: NSError)
+    func swiftCoapClient(_ client: SCClient, didFailWithError error: NSError)
     
     //Tells the delegate that the respective message was sent. The property "number" indicates the amount of (re-)transmission attempts
-    @objc optional func swiftCoapClient(_ client: SCClient, didSendMessage message: SCMessage, number: Int)
+    func swiftCoapClient(_ client: SCClient, didSendMessage message: SCMessage, number: Int)
 }
 
 
 //MARK:
 //MARK: SC Client Error Code Enumeration
 
-enum SCClientErrorCode: Int {
+public enum SCClientErrorCode: Int {
     case transportLayerSendError, messageInvalidForSendingError, receivedInvalidMessageError, noResponseExpectedError, proxyingError
     
     func descriptionString() -> String {
@@ -50,7 +50,7 @@ enum SCClientErrorCode: Int {
 //MARK:
 //MARK: SC Client IMPLEMENTATION
 
-class SCClient: NSObject {
+public class SCClient: NSObject {
     
     //MARK: Constants and Properties
     
@@ -59,13 +59,13 @@ class SCClient: NSObject {
     
     //INTERNAL PROPERTIES (allowed to modify)
     
-    weak var delegate: SCClientDelegate?
-    var sendToken = true   //If true, a token with 4-8 Bytes is sent
-    var autoBlock1SZX: UInt? = 2 { didSet { if let newValue = autoBlock1SZX { autoBlock1SZX = min(6, newValue) } } } //If not nil, Block1 transfer will be used automatically when the payload size exceeds the value 2^(autoBlock1SZX + 4). Valid Values: 0-6.
+    public weak var delegate: SCClientDelegate?
+    public var sendToken = true   //If true, a token with 4-8 Bytes is sent
+    public var autoBlock1SZX: UInt? = 2 { didSet { if let newValue = autoBlock1SZX { autoBlock1SZX = min(6, newValue) } } } //If not nil, Block1 transfer will be used automatically when the payload size exceeds the value 2^(autoBlock1SZX + 4). Valid Values: 0-6.
     
-    var httpProxyingData: (hostName: String, port: UInt16)?     //If not nil, all messages will be sent via http to the given proxy address
-    var cachingActive = false   //Activates caching
-    var disableRetransmissions = false
+    public var httpProxyingData: (hostName: String, port: UInt16)?     //If not nil, all messages will be sent via http to the given proxy address
+    public var cachingActive = false   //Activates caching
+    public var disableRetransmissions = false
     
     //READ-ONLY PROPERTIES
     
@@ -81,18 +81,18 @@ class SCClient: NSObject {
     fileprivate var currentTransmitWait = 0.0
     fileprivate var recentNotificationInfo: (Date, UInt)!
     lazy fileprivate var cachedMessagePairs = [SCMessage : SCMessage]()
-    
+
     
     //MARK: Internal Methods (allowed to use)
     
-    init(delegate: SCClientDelegate?, transportLayerObject: SCCoAPTransportLayerProtocol = SCCoAPUDPTransportLayer()) {
+    public init(delegate: SCClientDelegate?, transportLayerObject: SCCoAPTransportLayerProtocol = SCCoAPUDPTransportLayer()) {
         self.delegate = delegate
         super.init()
         self.transportLayerObject = transportLayerObject
         self.transportLayerObject.transportLayerDelegate = self
     }
     
-    func sendCoAPMessage(_ message: SCMessage, hostName: String, port: UInt16) {
+    public func sendCoAPMessage(_ message: SCMessage, hostName: String, port: UInt16) {
         currentMessageId = (currentMessageId % 0xFFFF) + 1
         
         message.hostName = hostName
@@ -146,7 +146,7 @@ class SCClient: NSObject {
     
     
     // Cancels observe directly, sending the previous message with an Observe-Option Value of 1. Only effective, if the previous message initiated a registration as observer with the respective server. To cancel observer indirectly (forget about the current state) call "closeTransmission()" or send another Message (this cleans up the old state automatically)
-    func cancelObserve() {
+    public func cancelObserve() {
         let cancelMessage = SCMessage(code: SCCodeValue(classValue: 0, detailValue: 01)!, type: .nonConfirmable, payload: nil)
         cancelMessage.token = messageInTransmission.token
         cancelMessage.options = messageInTransmission.options
@@ -164,7 +164,7 @@ class SCClient: NSObject {
     
     //Closes the transmission. It is recommended to call this method anytime you do not expect to receive a response any longer.
     
-    func closeTransmission() {
+    public func closeTransmission() {
         transportLayerObject.closeTransmission()
         messageInTransmission = nil
         isMessageInTransmission = false
@@ -239,7 +239,7 @@ class SCClient: NSObject {
         do {
             try transportLayerObject.sendCoAPData(data, toHost: host, port: port)
             if notifyDelegateAfterSuccess {
-                delegate?.swiftCoapClient?(self, didSendMessage: messageInTransmission, number: retransmissionCounter + 1)
+                delegate?.swiftCoapClient(self, didSendMessage: messageInTransmission, number: retransmissionCounter + 1)
             }
         }
         catch SCCoAPTransportLayerError.sendError(let errorDescription) {
@@ -252,11 +252,11 @@ class SCClient: NSObject {
     }
     
     fileprivate func notifyDelegateWithTransportLayerErrorDescription(_ errorDescription: String) {
-        delegate?.swiftCoapClient?(self, didFailWithError: NSError(domain: SCMessage.kCoapErrorDomain, code: 0, userInfo: [NSLocalizedDescriptionKey : errorDescription]))
+        delegate?.swiftCoapClient(self, didFailWithError: NSError(domain: SCMessage.kCoapErrorDomain, code: 0, userInfo: [NSLocalizedDescriptionKey : errorDescription]))
     }
     
     fileprivate func notifyDelegateWithErrorCode(_ clientErrorCode: SCClientErrorCode) {
-        delegate?.swiftCoapClient?(self, didFailWithError: NSError(domain: SCMessage.kCoapErrorDomain, code: clientErrorCode.rawValue, userInfo: [NSLocalizedDescriptionKey : clientErrorCode.descriptionString()]))
+        delegate?.swiftCoapClient(self, didFailWithError: NSError(domain: SCMessage.kCoapErrorDomain, code: clientErrorCode.rawValue, userInfo: [NSLocalizedDescriptionKey : clientErrorCode.descriptionString()]))
     }
     
     fileprivate func handleBlock2WithMessage(_ message: SCMessage) {
@@ -313,8 +313,8 @@ class SCClient: NSObject {
         urlRequest.url = URL(string: urlString)
         urlRequest.timeoutInterval = SCMessage.kMaxTransmitWait
         urlRequest.cachePolicy = .useProtocolCachePolicy
-        
-        NSURLConnection.sendAsynchronousRequest(urlRequest as URLRequest, queue: OperationQueue.main) { (response, data, error) -> Void in
+
+        URLSession.shared.dataTask(with: urlRequest as URLRequest) { (data, response, error) -> Void in
             if error != nil {
                 self.notifyDelegateWithErrorCode(.proxyingError)
             }
@@ -339,7 +339,7 @@ class SCClient: NSObject {
 // MARK: SC CoAP Transport Layer Delegate
 
 extension SCClient: SCCoAPTransportLayerDelegate {
-    func transportLayerObject(_ transportLayerObject: SCCoAPTransportLayerProtocol, didReceiveData data: Data, fromHost host: String, port: UInt16) {
+    public func transportLayerObject(_ transportLayerObject: SCCoAPTransportLayerProtocol, didReceiveData data: Data, fromHost host: String, port: UInt16) {
         if let message = SCMessage.fromData(data) {
     
             //Check for spam
@@ -414,7 +414,7 @@ extension SCClient: SCCoAPTransportLayerDelegate {
         }
     }
     
-    func transportLayerObject(_ transportLayerObject: SCCoAPTransportLayerProtocol, didFailWithError error: NSError) {
+    public func transportLayerObject(_ transportLayerObject: SCCoAPTransportLayerProtocol, didFailWithError error: NSError) {
         notifyDelegateWithErrorCode(.transportLayerSendError)
         transmissionTimer?.invalidate()
         transmissionTimer = nil

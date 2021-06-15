@@ -27,8 +27,6 @@ class ExampleViewController: UIViewController {
             myServer = server
         }
         
-
-        tableView.contentInset = UIEdgeInsets.init(top: 64.0, left: 0, bottom: 0, right: 0)
         tableView.estimatedRowHeight = 44.0
         tableView.rowHeight = UITableView.automaticDimension
     }

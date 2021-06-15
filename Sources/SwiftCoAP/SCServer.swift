@@ -9,8 +9,7 @@
 import UIKit
 
 
-//MARK:
-//MARK: SC Server Delegate Protocol implementation
+//MARK: - SC Server Delegate Protocol implementation
 
 public protocol SCServerDelegate: AnyObject {
     
@@ -31,8 +30,7 @@ public protocol SCServerDelegate: AnyObject {
 }
 
 
-//MARK:
-//MARK: SC Server Error Code Enumeration
+//MARK: - SC Server Error Code Enumeration
 
 public enum SCServerErrorCode: Int {
     case transportLayerError, receivedInvalidMessageError, noResponseExpectedError
@@ -50,8 +48,7 @@ public enum SCServerErrorCode: Int {
 }
 
 
-//MARK:
-//MARK: SC Server IMPLEMENTATION
+//MARK: - SC Server IMPLEMENTATION
 
 public class SCServer: NSObject {
     fileprivate class SCAddressWrapper: NSObject {

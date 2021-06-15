@@ -8,8 +8,7 @@
 
 import UIKit
 
-//MARK:
-//MARK: SC Client Delegate Protocol declaration
+//MARK: - SC Client Delegate Protocol declaration
 
 public protocol SCClientDelegate: AnyObject {
     
@@ -24,8 +23,7 @@ public protocol SCClientDelegate: AnyObject {
 }
 
 
-//MARK:
-//MARK: SC Client Error Code Enumeration
+//MARK: - SC Client Error Code Enumeration
 
 public enum SCClientErrorCode: Int {
     case transportLayerSendError, messageInvalidForSendingError, receivedInvalidMessageError, noResponseExpectedError, proxyingError
@@ -47,8 +45,7 @@ public enum SCClientErrorCode: Int {
 }
 
 
-//MARK:
-//MARK: SC Client IMPLEMENTATION
+//MARK: - SC Client IMPLEMENTATION
 
 public class SCClient: NSObject {
     

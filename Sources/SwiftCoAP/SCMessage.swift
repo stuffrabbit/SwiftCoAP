@@ -112,11 +112,11 @@ public final class SCCoAPUDPTransportLayer: NSObject {
                     waitingForNextDatagram = true
                     guard let self = self else { return }
                     if error != nil {
-                        self.transportLayerDelegate.transportLayerObject(self, didFailWithError: error! as NSError)
+                        self.transportLayerDelegate?.transportLayerObject(self, didFailWithError: error! as NSError)
                         return
                     }
                     if let data = data {
-                        self.transportLayerDelegate.transportLayerObject(self, didReceiveData: data, fromHost: hostPort.host, port: hostPort.port)
+                        self.transportLayerDelegate?.transportLayerObject(self, didReceiveData: data, fromHost: hostPort.host, port: hostPort.port)
                     }
                 }
             }

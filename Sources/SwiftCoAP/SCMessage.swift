@@ -43,6 +43,9 @@ public protocol SCCoAPTransportLayerProtocol: AnyObject {
     
     //Start to listen for Messages. Prepare e.g. sockets for receiving data. This method will only be called by SCServer
     func startListening() throws
+
+    // Same as `startListening()` but on non-default port.
+    func startListening(onPort listenPort: UInt16) throws
 }
 
 struct HostPortKey: Hashable {
@@ -93,7 +96,8 @@ public final class SCCoAPUDPTransportLayer: NSObject {
         os_log("Currently %d NWConnection object(s) are alive", connections.count)
         os_log("Getting connection object for connection to HOST %@, PORT %d", log: .default, type: .info, host, port)
         let connectionKey = HostPortKey(host: host, port: port)
-        if let connection = connections[connectionKey], connection.state != .cancelled {
+        // Reuse only connections in untroubled state
+        if let connection = connections[connectionKey], [.ready, .preparing, .setup].contains(connection.state) {
             os_log("Reusing existing NWConnection to HOST %@, PORT %d", log: .default, type: .info, host, port)
             return connection
         }
@@ -113,6 +117,7 @@ public final class SCCoAPUDPTransportLayer: NSObject {
                     guard let self = self else { return }
                     if error != nil {
                         self.transportLayerDelegate?.transportLayerObject(self, didFailWithError: error! as NSError)
+                        connection.cancel()
                         return
                     }
                     if let data = data {
@@ -161,6 +166,8 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
     }
     
     public func closeTransmission() {
+        listener?.cancel()
+        listener = nil
         connections.forEach{
             $0.value.cancel()
         }
@@ -173,6 +180,7 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
     }
     
     public func startListening(onPort listenPort: UInt16) throws {
+        listener?.cancel() // Should release the sockets if there are some unused listeners left.
         listener = try NWListener(using: networkParameters, on: NWEndpoint.Port(rawValue: listenPort)!)
         listener?.newConnectionHandler = { [weak self] newConnection in
             guard let self = self else { return }
@@ -214,9 +222,17 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
                 // Restart listener as in Apple's example.
                 if error == NWError.dns(DNSServiceErrorType(kDNSServiceErr_DefunctConnection)) {
                     self?.listener?.cancel()
-                    try? self?.startListening(onPort: listenPort)
+                    do {
+                        try self?.startListening(onPort: listenPort)
+                    } catch {
+                        self?.listener?.cancel()
+                        guard let self = self else { return }
+                        self.transportLayerDelegate?.transportLayerObject(self, didFailWithError: error as NSError)
+                    }
                 } else {
                     self?.listener?.cancel()
+                    guard let self = self else { return }
+                    self.transportLayerDelegate?.transportLayerObject(self, didFailWithError: error as NSError)
                 }
             case .waiting(let reason):
                 os_log("Listener on PORT %d entered WAITING state. Reason %@", log: .default, type: .info, listenPort, reason.debugDescription)

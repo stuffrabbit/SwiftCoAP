@@ -94,12 +94,19 @@ public class SCServer: NSObject {
     
     //Initializer (failable): Starts server on initialization.
     
-    public init?(delegate: SCServerDelegate?, transportLayerObject: SCCoAPTransportLayerProtocol = SCCoAPUDPTransportLayer()) {
+    public init?(delegate: SCServerDelegate?,
+                 transportLayerObject: SCCoAPTransportLayerProtocol = SCCoAPUDPTransportLayer(),
+                 listenPort: UInt16? = nil) {
         self.delegate = delegate
         super.init()
         self.transportLayerObject = transportLayerObject
         do {
-            try start()
+            switch listenPort {
+            case .some(let p):
+                try start(onPort: p)
+            default:
+                try start()
+            }
             self.transportLayerObject.transportLayerDelegate = self
         }
         catch {
@@ -107,10 +114,14 @@ public class SCServer: NSObject {
         }
     }
     
-    //Start server manually, with the given port
-    
+    /// Start server manually
     public func start() throws {
         try self.transportLayerObject?.startListening()
+    }
+
+    /// Start server on non-standard port
+    public func start(onPort port: UInt16) throws {
+        try self.transportLayerObject?.startListening(onPort: port)
     }
     
     

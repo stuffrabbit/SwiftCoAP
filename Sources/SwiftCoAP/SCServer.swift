@@ -104,7 +104,7 @@ public class SCServer: NSObject {
             switch listenPort {
             case .some(let p):
                 try start(onPort: p)
-            default:
+            case .none:
                 try start()
             }
             self.transportLayerObject.transportLayerDelegate = self

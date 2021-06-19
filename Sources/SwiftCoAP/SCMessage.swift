@@ -221,7 +221,6 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
                 os_log("Listener on PORT %d FAILED", log: .default, type: .error, "\(error)", listenPort)
                 // Restart listener as in Apple's example.
                 if error == NWError.dns(DNSServiceErrorType(kDNSServiceErr_DefunctConnection)) {
-                    self?.listener?.cancel()
                     do {
                         try self?.startListening(onPort: listenPort)
                     } catch {

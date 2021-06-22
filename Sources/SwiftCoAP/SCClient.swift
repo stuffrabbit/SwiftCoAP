@@ -356,6 +356,7 @@ extension SCClient: SCCoAPTransportLayerDelegate {
             
             //Set return address
             message.hostName = host
+            message.port = port
             
             //Handle Caching, Separate, etc
             if cachingActive && messageInTransmission.code == SCCodeValue(classValue: 0, detailValue: 01) {

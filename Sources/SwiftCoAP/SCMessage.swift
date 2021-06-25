@@ -823,7 +823,7 @@ public class SCMessage: NSObject {
     public lazy var options = [Int: [Data]]() //CoAP-Options. It is recommend to use the addOption(..) method to add a new option.
     
     //The following properties are modified by SCClient/SCServer. Modification has no effect and is therefore not recommended
-    var blockBody: Data? //Helper for Block1 tranmission. Used by SCClient, modification has no effect
+    public internal(set) var blockBody: Data? //Helper for Block1 tranmission. Used by SCClient, modification has no effect
     public var hostName: String?
     public var port: UInt16?
     public var resourceForConfirmableResponse: SCResourceModel?

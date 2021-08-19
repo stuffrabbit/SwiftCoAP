@@ -103,26 +103,24 @@ public final class SCCoAPUDPTransportLayer: NSObject {
     }
 
     private func startReads(from connection: NWConnection, withEndpoint endpoint: NWEndpoint) {
-        var waitingForNextDatagram = true
-        while connection.state == .ready {
-            if waitingForNextDatagram {
-                waitingForNextDatagram = false
-                connection.receiveMessage { [weak self] data, context, complete, error in
-                    guard let self = self else {
-                        connection.cancel()
-                        return
-                    }
-                    if error != nil {
-                        self.transportLayerDelegate?.transportLayerObject(self, didFailWithError: error! as NSError)
-                        connection.cancel()
-                        return
-                    }
-                    if let data = data, let hostPort = self.endpointToHostPort(endpoint) {
-                        self.transportLayerDelegate?.transportLayerObject(self, didReceiveData: data, fromHost: hostPort.host, port: hostPort.port)
-                    }
-                    waitingForNextDatagram = true
-                }
+        guard connection.state == .ready else {
+            return
+        }
+        
+        connection.receiveMessage { [weak self] data, context, _, maybeError in
+            guard let self = self else {
+                connection.cancel()
+                return
             }
+            if let error = maybeError {
+                self.transportLayerDelegate?.transportLayerObject(self, didFailWithError: error as NSError)
+                connection.cancel()
+                return
+            }
+            if let data = data, let hostPort = self.endpointToHostPort(endpoint) {
+                self.transportLayerDelegate?.transportLayerObject(self, didReceiveData: data, fromHost: hostPort.host, port: hostPort.port)
+            }
+            self.startReads(from: connection, withEndpoint: endpoint)
         }
     }
 

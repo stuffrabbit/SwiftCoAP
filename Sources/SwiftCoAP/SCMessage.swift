@@ -18,34 +18,64 @@ public enum SCCoAPTransportLayerError: Error {
 }
 
 
-//MARK: - SC CoAP Transport Layer Delegate Protocol declaration. It is implemented by SCClient to receive responses. Your custom transport layer handler must call these callbacks to notify the SCClient object.
+// MARK: - SC CoAP Transport Layer Delegate Protocol declaration. It is implemented by SCClient to receive responses. Your custom transport layer handler must call these callbacks to notify the SCClient object.
 
 public protocol SCCoAPTransportLayerDelegate: AnyObject {
-    //CoAP Data Received
+    // CoAP Data Received
     func transportLayerObject(_ transportLayerObject: SCCoAPTransportLayerProtocol, didReceiveData data: Data, fromHost host: String, port: UInt16)
+    func transportLayerObject(_ transportLayerObject: SCCoAPTransportLayerProtocol, didReceiveData data: Data, fromEndpoint endpoint: NWEndpoint)
     
-    //Error occured. Provide an appropriate NSError object.
+    // Error occured. Provide an appropriate NSError object.
     func transportLayerObject(_ transportLayerObject: SCCoAPTransportLayerProtocol, didFailWithError error: NSError)
+}
+
+extension SCCoAPTransportLayerDelegate {
+    public func transportLayerObject(_ transportLayerObject: SCCoAPTransportLayerProtocol, didReceiveData data: Data, fromHost host: String, port: UInt16) {
+        self.transportLayerObject(transportLayerObject, didReceiveData: data, fromEndpoint: NWEndpoint.hostPort(
+            host: NWEndpoint.Host(host),
+            port: NWEndpoint.Port(rawValue: port)!
+        ))
+    }
+    public func transportLayerObject(_ transportLayerObject: SCCoAPTransportLayerProtocol, didReceiveData data: Data, fromEndpoint endpoint: NWEndpoint){
+        // NOTE: You really want to implement this method in a class, this No-Op implementation is to allow legacy code work.
+    }
 }
 
 
 //MARK: - SC CoAP Transport Layer Protocol declaration
 
 public protocol SCCoAPTransportLayerProtocol: AnyObject {
-    //SCClient uses this property to assign itself as delegate
+    // SCClient uses this property to assign itself as delegate
     var transportLayerDelegate: SCCoAPTransportLayerDelegate! { get set }
     
-    //SClient calls this method when it wants to send CoAP data
+    // `SClient` calls one of the following methods when it wants to send CoAP data.
+    //
+    // Only a `sendCoAPData(_ data: Data, toEndpoint endpoint: NWEndpoint)` should be implemented.
+    // A method `sendCoAPData(_ data: Data, toHost host: String, port: UInt16)` has the default implementation in protocol extension
+    // just converting `host` and `port` into an `NWEndpoint` object.
     func sendCoAPData(_ data: Data, toHost host: String, port: UInt16) throws
+    func sendCoAPData(_ data: Data, toEndpoint endpoint: NWEndpoint) throws
 
-    //Called when the transmission is over. Clear your states (e.g. close sockets)
+    // Called when the transmission is over. Clear your states (e.g. close sockets)
     func closeTransmission()
     
-    //Start to listen for Messages. Prepare e.g. sockets for receiving data. This method will only be called by SCServer
+    // Start to listen for Messages. Prepare e.g. sockets for receiving data. This method will only be called by SCServer
     func startListening() throws
 
     // Same as `startListening()` but on non-default port.
     func startListening(onPort listenPort: UInt16) throws
+}
+
+extension SCCoAPTransportLayerProtocol {
+    public func sendCoAPData(_ data: Data, toHost host: String, port: UInt16) throws {
+        try sendCoAPData(
+            data,
+            toEndpoint: NWEndpoint.hostPort(
+                host: NWEndpoint.Host(host),
+                port: NWEndpoint.Port(rawValue: port)!
+            )
+        )
+    }
 }
 
 
@@ -58,7 +88,8 @@ public final class SCCoAPUDPTransportLayer: NSObject {
     var listener: NWListener?
     var networkParameters: NWParameters = .udp
 
-    private func setupStateUpdateHandler(for connection: NWConnection, withEndpoint endpoint: NWEndpoint) -> NWConnection {
+    private func setupStateUpdateHandler(for connection: NWConnection) -> NWConnection {
+        let endpoint = connection.endpoint
         connection.stateUpdateHandler = { [weak self] newState in
             switch newState {
             case .failed(let error):
@@ -76,7 +107,7 @@ public final class SCCoAPUDPTransportLayer: NSObject {
             case .ready:
                 os_log("Connection to ENDPOINT %@ entered READY state", log: .default, type: .info, endpoint.debugDescription)
                 guard let self = self else { return }
-                self.startReads(from: connection, withEndpoint: endpoint)
+                self.startReads(from: connection)
             case .cancelled:
                 os_log("Connection to ENDPOINT %@ is CANCELLED", log: .default, type: .info, endpoint.debugDescription)
                 self?.connections.removeValue(forKey: endpoint)
@@ -87,26 +118,22 @@ public final class SCCoAPUDPTransportLayer: NSObject {
         return connection
     }
 
-    private func mustGetConnection(forHost host: String, port: UInt16) -> NWConnection {
-        os_log("Currently %d NWConnection object(s) are alive", connections.count)
-        os_log("Getting connection object for connection to HOST %@, PORT %d", log: .default, type: .info, host, port)
-        let connectionKey = NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: NWEndpoint.Port(port.description)!)
+    private func mustGetConnection(forEndpoint endpoint: NWEndpoint) -> NWConnection {
+        let connectionKey = endpoint
         // Reuse only connections in untroubled state
         if let connection = connections[connectionKey], [.ready, .preparing, .setup].contains(connection.state) {
-            os_log("Reusing existing NWConnection to HOST %@, PORT %d", log: .default, type: .info, host, port)
             return connection
         }
-        let connection = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!, using: networkParameters)
+        let connection = NWConnection(to: endpoint, using: networkParameters)
         connections[connectionKey] = connection
-        os_log("New NWConnection created to HOST %@, PORT %d", log: .default, type: .info, host, port)
         return connection
     }
 
-    private func startReads(from connection: NWConnection, withEndpoint endpoint: NWEndpoint) {
+    private func startReads(from connection: NWConnection) {
         guard connection.state == .ready else {
             return
         }
-        
+
         connection.receiveMessage { [weak self] data, context, _, maybeError in
             guard let self = self else {
                 connection.cancel()
@@ -117,38 +144,17 @@ public final class SCCoAPUDPTransportLayer: NSObject {
                 connection.cancel()
                 return
             }
-            if let data = data, let hostPort = self.endpointToHostPort(endpoint) {
-                self.transportLayerDelegate?.transportLayerObject(self, didReceiveData: data, fromHost: hostPort.host, port: hostPort.port)
+            if let data = data {
+                self.transportLayerDelegate?.transportLayerObject(self, didReceiveData: data, fromEndpoint: connection.endpoint)
             }
-            self.startReads(from: connection, withEndpoint: endpoint)
+            self.startReads(from: connection)
         }
     }
 
-    private func endpointToHostPort(_ endpoint: NWEndpoint) -> (host: String, port: UInt16)? {
-        switch endpoint {
-        case .hostPort(host: let host, port: let port):
-            let port = port.rawValue
-            switch host {
-            case .name(let name, _):
-                return (host: name, port: port)
-            case .ipv4(let ip):
-                return (host: ip.debugDescription, port: port)
-            case .ipv6(let ip):
-                return (host: ip.debugDescription, port: port)
-            @unknown default:
-                return nil
-            }
-        case .service(name: _, type: _, domain: _, interface: _),
-             .unix(path:_),
-             .url(_):
-            return nil
-        @unknown default:
-            return nil
-        }
-    }
 }
 
 extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
+
     /// Passing a PSK to init sets all NWConnection and NWListener objects if any created
     /// to use DTLS with provided PSK.
     /// - Parameter psk: A Preshared Key in plain text form.
@@ -167,12 +173,11 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
         self.networkParameters = networkParameters
     }
 
-    public func sendCoAPData(_ data: Data, toHost host: String, port: UInt16) throws {
-//        NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: NWEndpoint.Port(port.description)!)
-        var connection = mustGetConnection(forHost: host, port: port)
-        let hostPort = NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: NWEndpoint.Port(port.description)!)
+
+    public func sendCoAPData(_ data: Data, toEndpoint endpoint: NWEndpoint) throws {
+        var connection = mustGetConnection(forEndpoint: endpoint)
         if connection.stateUpdateHandler == nil {
-            connection = setupStateUpdateHandler(for: connection, withEndpoint: hostPort)
+            connection = setupStateUpdateHandler(for: connection)
         }
         if connection.state == .setup {
             connection.start(queue: DispatchQueue.global(qos: .utility))
@@ -205,9 +210,9 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
         listener?.newConnectionHandler = { [weak self] newConnection in
             guard let self = self else { return }
             os_log("Connection attempt on endpoint %@", log: .default, type: .info, newConnection.endpoint.debugDescription)
-            let connection = self.setupStateUpdateHandler(for: newConnection, withEndpoint: newConnection.endpoint)
+            let connection = self.setupStateUpdateHandler(for: newConnection)
             connection.start(queue: DispatchQueue.global(qos: .utility))
-            self.startReads(from: connection, withEndpoint: newConnection.endpoint)
+            self.startReads(from: connection)
             self.connections[newConnection.endpoint] = connection
         }
         listener?.stateUpdateHandler = { [weak self] newState in
@@ -822,11 +827,10 @@ public class SCMessage: NSObject {
     
     //The following properties are modified by SCClient/SCServer. Modification has no effect and is therefore not recommended
     public internal(set) var blockBody: Data? //Helper for Block1 tranmission. Used by SCClient, modification has no effect
-    public var hostName: String?
-    public var port: UInt16?
-    public var resourceForConfirmableResponse: SCResourceModel?
-    public var messageId: UInt16!
-    public var token: UInt64 = 0
+    public internal(set) var endpoint: NWEndpoint?
+    public internal(set) var resourceForConfirmableResponse: SCResourceModel?
+    public internal(set) var messageId: UInt16!
+    public internal(set) var token: UInt64 = 0
     
     var timeStamp: Date?
     
@@ -841,7 +845,7 @@ public class SCMessage: NSObject {
     }
     
     public func equalForCachingWithMessage(_ message: SCMessage) -> Bool {
-        if code == message.code && hostName == message.hostName && port == message.port {
+        if code == message.code && endpoint == message.endpoint {
             let firstSet = Set(options.keys)
             let secondSet = Set(message.options.keys)
             
@@ -874,8 +878,7 @@ public class SCMessage: NSObject {
     public static func copyFromMessage(_ message: SCMessage) -> SCMessage {
         let copiedMessage = SCMessage(code: message.code, type: message.type, payload: message.payload)
         copiedMessage.options = message.options
-        copiedMessage.hostName = message.hostName
-        copiedMessage.port = message.port
+        copiedMessage.endpoint = message.endpoint
         copiedMessage.messageId = message.messageId
         copiedMessage.token = message.token
         copiedMessage.timeStamp = message.timeStamp
@@ -1013,7 +1016,7 @@ public class SCMessage: NSObject {
               type != nil,
               firstByte == UInt8(kCoapVersion),
               (4 + tokenLenght) <= data.count // to exclude a crash on parsing invalid data
-              else { return nil }
+        else { return nil }
         
         //Assign header values to CoAP Message
         let message = SCMessage()

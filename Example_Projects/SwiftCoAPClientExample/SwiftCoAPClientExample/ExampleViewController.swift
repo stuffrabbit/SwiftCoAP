@@ -85,7 +85,7 @@ extension ExampleViewController: SCClientDelegate {
                 payloadstring = String(string)
             }
         }
-        let firstPartString = "Message received from \(message.hostName ?? "") with type: \(message.type.shortString())\nwith code: \(message.code.toString()) \nwith id: \(message.messageId ?? 0)\nPayload: \(payloadstring)\n"
+        let firstPartString = "Message received from \(message.endpoint?.debugDescription ?? "") with type: \(message.type.shortString())\nwith code: \(message.code.toString()) \nwith id: \(message.messageId ?? 0)\nPayload: \(payloadstring)\n"
         var optString = "Options:\n"
         for (key, _) in message.options {
             var optName = "Unknown"

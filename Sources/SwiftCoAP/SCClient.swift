@@ -6,7 +6,9 @@
 //  Copyright (c) 2015 Wojtek Kordylewski. All rights reserved.
 //
 
-import UIKit
+import Foundation
+import Network
+import os.log
 
 //MARK: - SC Client Delegate Protocol declaration
 
@@ -88,12 +90,21 @@ public class SCClient: NSObject {
         self.transportLayerObject = transportLayerObject
         self.transportLayerObject.transportLayerDelegate = self
     }
-    
+
     public func sendCoAPMessage(_ message: SCMessage, hostName: String, port: UInt16) {
+        sendCoAPMessage(
+            message,
+            endpoint: NWEndpoint.hostPort(
+                host: NWEndpoint.Host(hostName),
+                port: NWEndpoint.Port(rawValue: port)!
+            )
+        )
+    }
+    
+    public func sendCoAPMessage(_ message: SCMessage, endpoint: NWEndpoint) {
         currentMessageId = (currentMessageId % 0xFFFF) + 1
         
-        message.hostName = hostName
-        message.port = port
+        message.endpoint = endpoint
         message.messageId = currentMessageId
         message.timeStamp = Date()
         
@@ -149,12 +160,11 @@ public class SCClient: NSObject {
         cancelMessage.options = messageInTransmission.options
         currentMessageId = (currentMessageId % 0xFFFF) + 1
         cancelMessage.messageId = currentMessageId
-        cancelMessage.hostName = messageInTransmission.hostName
-        cancelMessage.port = messageInTransmission.port
+        cancelMessage.endpoint = messageInTransmission.endpoint
         var cancelByte: UInt8 = 1
         cancelMessage.options[SCOption.observe.rawValue] = [Data(bytes: &cancelByte, count: 1)]
         if let messageData = cancelMessage.toData() {
-            sendCoAPMessageOverTransportLayerWithData(messageData, host: messageInTransmission.hostName!, port: messageInTransmission.port!)
+            sendCoAPMessageOverTransportLayerWithData(messageData, endpoint: messageInTransmission.endpoint!)
         }
     }
     
@@ -215,7 +225,7 @@ public class SCClient: NSObject {
     
     fileprivate func sendPendingMessage() {
         if let data = messageInTransmission.toData() {
-            sendCoAPMessageOverTransportLayerWithData(data as Data, host: messageInTransmission.hostName!, port: messageInTransmission.port!, notifyDelegateAfterSuccess: true)
+            sendCoAPMessageOverTransportLayerWithData(data as Data, endpoint: messageInTransmission.endpoint!, notifyDelegateAfterSuccess: true)
         }
         else {
             closeTransmission()
@@ -223,18 +233,18 @@ public class SCClient: NSObject {
         }
     }
     
-    fileprivate func sendEmptyMessageWithType(_ type: SCType, messageId: UInt16, toHost host: String, port: UInt16) {
+    fileprivate func sendEmptyMessageWithType(_ type: SCType, messageId: UInt16, toEndpoint endpoint: NWEndpoint) {
         let emptyMessage = SCMessage()
         emptyMessage.type = type;
         emptyMessage.messageId = messageId
         if let messageData = emptyMessage.toData() {
-            sendCoAPMessageOverTransportLayerWithData(messageData as Data, host: host, port: port)
+            sendCoAPMessageOverTransportLayerWithData(messageData as Data, endpoint: endpoint)
         }
     }
     
-    fileprivate func sendCoAPMessageOverTransportLayerWithData(_ data: Data, host: String, port: UInt16, notifyDelegateAfterSuccess: Bool = false) {
+    fileprivate func sendCoAPMessageOverTransportLayerWithData(_ data: Data, endpoint: NWEndpoint, notifyDelegateAfterSuccess: Bool = false) {
         do {
-            try transportLayerObject.sendCoAPData(data, toHost: host, port: port)
+            try transportLayerObject.sendCoAPData(data, toEndpoint: endpoint)
             if notifyDelegateAfterSuccess {
                 delegate?.swiftCoapClient(self, didSendMessage: messageInTransmission, number: retransmissionCounter + 1)
             }
@@ -266,7 +276,7 @@ public class SCClient: NSObject {
                 let newValue = (actualValue & ~8) + 16
                 var byteArray = newValue.toByteArray()
                 blockMessage.options[SCOption.block2.rawValue] = [Data(bytes: &byteArray, count: byteArray.count)]
-                sendCoAPMessage(blockMessage, hostName: messageInTransmission.hostName!, port: messageInTransmission.port!)
+                sendCoAPMessage(blockMessage, endpoint: messageInTransmission.endpoint!)
             }
             else {
                 isMessageInTransmission = false
@@ -301,12 +311,16 @@ public class SCClient: NSObject {
         var byteArray = blockValue.toByteArray()
         blockMessage.options[SCOption.block1.rawValue] = [Data(bytes: &byteArray, count: byteArray.count)]
         
-        sendCoAPMessage(blockMessage, hostName: messageInTransmission.hostName!, port: messageInTransmission.port!)
+        sendCoAPMessage(blockMessage, endpoint: messageInTransmission.endpoint!)
     }
     
     fileprivate func sendHttpMessageFromCoAPMessage(_ message: SCMessage) {
+        guard let endpoint = message.endpoint, let hostPort = endpointToHostPort(endpoint) else {
+            os_log(.error, "Can't call 'sendHttpMessageFromCoAPMessage' with endpoint %@", message.endpoint?.debugDescription ?? "NO ENDPOINT")
+            return
+        }
         let urlRequest = message.toHttpUrlRequestWithUrl()
-        let urlString = "http://\(httpProxyingData!.hostName):\(httpProxyingData!.port)/\(message.hostName!):\(message.port!)"
+        let urlString = "http://\(httpProxyingData!.hostName):\(httpProxyingData!.port)/\(hostPort.host):\(hostPort.port)"
         urlRequest.url = URL(string: urlString)
         urlRequest.timeoutInterval = SCMessage.kMaxTransmitWait
         urlRequest.cachePolicy = .useProtocolCachePolicy
@@ -328,6 +342,29 @@ public class SCClient: NSObject {
             }
         }
     }
+
+    fileprivate func endpointToHostPort(_ endpoint: NWEndpoint) -> (host: String, port: UInt16)? {
+        switch endpoint {
+        case .hostPort(host: let host, port: let port):
+            let port = port.rawValue
+            switch host {
+            case .name(let name, _):
+                return (host: name, port: port)
+            case .ipv4(let ip):
+                return (host: ip.debugDescription, port: port)
+            case .ipv6(let ip):
+                return (host: ip.debugDescription, port: port)
+            @unknown default:
+                return nil
+            }
+        case .service(name: _, type: _, domain: _, interface: _),
+             .unix(path:_),
+             .url(_):
+            return nil
+        @unknown default:
+            return nil
+        }
+    }
 }
 
 
@@ -336,17 +373,17 @@ public class SCClient: NSObject {
 // MARK: SC CoAP Transport Layer Delegate
 
 extension SCClient: SCCoAPTransportLayerDelegate {
-    public func transportLayerObject(_ transportLayerObject: SCCoAPTransportLayerProtocol, didReceiveData data: Data, fromHost host: String, port: UInt16) {
+    public func transportLayerObject(_ transportLayerObject: SCCoAPTransportLayerProtocol, didReceiveData data: Data, fromEndpoint endpoint: NWEndpoint) {
         if let message = SCMessage.fromData(data) {
-    
+
             //Check for spam
             if message.messageId != messageInTransmission.messageId && message.token != messageInTransmission.token {
                 if message.type.rawValue <= SCType.nonConfirmable.rawValue {
-                    sendEmptyMessageWithType(.reset, messageId: message.messageId, toHost: host, port: port)
+                    sendEmptyMessageWithType(.reset, messageId: message.messageId, toEndpoint: endpoint)
                 }
                 return
             }
-    
+
             //Invalidate Timer
             transmissionTimer?.invalidate()
             transmissionTimer = nil
@@ -355,8 +392,7 @@ extension SCClient: SCCoAPTransportLayerDelegate {
             message.timeStamp = Date()
             
             //Set return address
-            message.hostName = host
-            message.port = port
+            message.endpoint = endpoint
             
             //Handle Caching, Separate, etc
             if cachingActive && messageInTransmission.code == SCCodeValue(classValue: 0, detailValue: 01) {
@@ -370,7 +406,7 @@ extension SCClient: SCCoAPTransportLayerDelegate {
                     (recentNotificationInfo.1 < currentNumber && currentNumber - recentNotificationInfo.1 < kMaxObserveOptionValue) ||
                     (recentNotificationInfo.1 > currentNumber && recentNotificationInfo.1 - currentNumber > kMaxObserveOptionValue) ||
                     (recentNotificationInfo.0 .compare(message.timeStamp!.addingTimeInterval(128)) == .orderedAscending) {
-                        recentNotificationInfo = (message.timeStamp!, currentNumber)
+                    recentNotificationInfo = (message.timeStamp!, currentNumber)
                 }
                 else {
                     return
@@ -400,7 +436,7 @@ extension SCClient: SCCoAPTransportLayerDelegate {
             
             //Further Operations
             if message.type == .confirmable {
-                sendEmptyMessageWithType(.acknowledgement, messageId: message.messageId, toHost: host, port: port)
+                sendEmptyMessageWithType(.acknowledgement, messageId: message.messageId, toEndpoint: endpoint)
             }
             
             if (message.type != .acknowledgement || message.code.toCodeSample() != .empty) && message.options[SCOption.block2.rawValue] == nil && message.code.toCodeSample() != SCCodeSample.continue {

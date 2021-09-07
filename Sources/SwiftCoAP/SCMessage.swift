@@ -124,7 +124,9 @@ public final class SCCoAPUDPTransportLayer: NSObject {
         if let connection = connections[connectionKey], [.ready, .preparing, .setup].contains(connection.state) {
             return connection
         }
-        let connection = NWConnection(to: endpoint, using: networkParameters)
+        // Setup handler and start the new connection
+        let connection = setupStateUpdateHandler(for: NWConnection(to: endpoint, using: networkParameters))
+        connection.start(queue: DispatchQueue.global(qos: .utility))
         connections[connectionKey] = connection
         return connection
     }
@@ -175,13 +177,7 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
 
 
     public func sendCoAPData(_ data: Data, toEndpoint endpoint: NWEndpoint) throws {
-        var connection = mustGetConnection(forEndpoint: endpoint)
-        if connection.stateUpdateHandler == nil {
-            connection = setupStateUpdateHandler(for: connection)
-        }
-        if connection.state == .setup {
-            connection.start(queue: DispatchQueue.global(qos: .utility))
-        }
+        let connection = mustGetConnection(forEndpoint: endpoint)
         connection.send(content: data, completion: .contentProcessed{ [weak self] error in
             guard let self = self else { return }
             if error != nil {

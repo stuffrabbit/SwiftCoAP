@@ -155,6 +155,7 @@ public class SCClient: NSObject {
     
     // Cancels observe directly, sending the previous message with an Observe-Option Value of 1. Only effective, if the previous message initiated a registration as observer with the respective server. To cancel observer indirectly (forget about the current state) call "closeTransmission()" or send another Message (this cleans up the old state automatically)
     public func cancelObserve() {
+        guard messageInTransmission != nil else { return } // Should safeguard from crash in case when `cancelObserve` and `closeTransmission` are called out of order.
         let cancelMessage = SCMessage(code: SCCodeValue(classValue: 0, detailValue: 01)!, type: .nonConfirmable, payload: nil)
         cancelMessage.token = messageInTransmission.token
         cancelMessage.options = messageInTransmission.options

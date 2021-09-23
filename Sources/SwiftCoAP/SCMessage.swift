@@ -160,9 +160,19 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
     /// Passing a PSK to init sets all NWConnection and NWListener objects if any created
     /// to use DTLS with provided PSK.
     /// - Parameter psk: A Preshared Key in plain text form.
-    convenience public init(psk: String) {
+    /// - Parameter suite: A cipher suite to be used for TLS communications, defaults to `TLS_PSK_WITH_AES_128_GCM_SHA256` when not specified.
+    convenience public init?(psk: String, suite: SSLCipherSuite = TLS_PSK_WITH_AES_128_GCM_SHA256) {
+        guard let psk = psk.data(using: .utf8) else { return nil }
+        self.init(psk: psk, suite: suite)
+    }
+
+    /// Passing a PSK to init sets all NWConnection and NWListener objects if any created
+    /// to use DTLS with provided PSK.
+    /// - Parameter psk: A Preshared Key.
+    /// - Parameter suite: A cipher suite to be used for TLS communications, defaults to `TLS_PSK_WITH_AES_128_GCM_SHA256` when not specified.
+    convenience public init(psk: Data, suite: SSLCipherSuite = TLS_PSK_WITH_AES_128_GCM_SHA256) {
         self.init()
-        networkParameters = networkParametersDTLSWith(psk: psk)
+        networkParameters = networkParametersDTLSWith(psk: psk, suite: suite)
     }
 
     /// NWParameters to use with all NWConnection and NWListener objects if any created.
@@ -240,19 +250,19 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
         listener?.start(queue: DispatchQueue.global(qos: .utility))
     }
 
-    private func networkParametersDTLSWith(psk: String) -> NWParameters{
-        NWParameters(dtls: tlsWithPSKOptions(psk: psk), udp: NWProtocolUDP.Options())
+    private func networkParametersDTLSWith(psk: Data, suite: SSLCipherSuite) -> NWParameters{
+        NWParameters(dtls: tlsWithPSKOptions(psk: psk, suite: suite), udp: NWProtocolUDP.Options())
     }
 
-    private func tlsWithPSKOptions(psk: String) -> NWProtocolTLS.Options{
+    private func tlsWithPSKOptions(psk: Data, suite: SSLCipherSuite) -> NWProtocolTLS.Options{
         let tlsOptions = NWProtocolTLS.Options()
         let semaphore = DispatchSemaphore(value: 0)
-        psk.data(using: .utf8)?.withUnsafeBytes{ (pointer:UnsafeRawBufferPointer) in
+        psk.withUnsafeBytes{ (pointer:UnsafeRawBufferPointer) in
             defer { semaphore.signal() }
             let dd = DispatchData(bytes: pointer)
             sec_protocol_options_add_pre_shared_key(tlsOptions.securityProtocolOptions, dd as __DispatchData, dd as __DispatchData)
             // TLS_PSK_WITH_AES_128_GCM_SHA256 as in Apple's example project. 'Boring SSL' complains anyway.
-            sec_protocol_options_append_tls_ciphersuite(tlsOptions.securityProtocolOptions, tls_ciphersuite_t(rawValue: UInt16(TLS_PSK_WITH_AES_128_GCM_SHA256))!)
+            sec_protocol_options_append_tls_ciphersuite(tlsOptions.securityProtocolOptions, tls_ciphersuite_t(rawValue: UInt16(suite))!)
         }
         semaphore.wait()
         return tlsOptions

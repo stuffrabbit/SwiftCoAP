@@ -261,7 +261,6 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
             defer { semaphore.signal() }
             let dd = DispatchData(bytes: pointer)
             sec_protocol_options_add_pre_shared_key(tlsOptions.securityProtocolOptions, dd as __DispatchData, dd as __DispatchData)
-            // TLS_PSK_WITH_AES_128_GCM_SHA256 as in Apple's example project. 'Boring SSL' complains anyway.
             sec_protocol_options_append_tls_ciphersuite(tlsOptions.securityProtocolOptions, tls_ciphersuite_t(rawValue: UInt16(suite))!)
         }
         semaphore.wait()

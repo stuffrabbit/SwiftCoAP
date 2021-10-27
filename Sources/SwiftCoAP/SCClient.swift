@@ -263,8 +263,16 @@ public class SCClient: NSObject {
         delegate?.swiftCoapClient(self, didFailWithError: NSError(domain: SCMessage.kCoapErrorDomain, code: 0, userInfo: [NSLocalizedDescriptionKey : errorDescription]))
     }
     
-    fileprivate func notifyDelegateWithErrorCode(_ clientErrorCode: SCClientErrorCode) {
-        delegate?.swiftCoapClient(self, didFailWithError: NSError(domain: SCMessage.kCoapErrorDomain, code: clientErrorCode.rawValue, userInfo: [NSLocalizedDescriptionKey : clientErrorCode.descriptionString()]))
+    fileprivate func notifyDelegateWithErrorCode(_ clientErrorCode: SCClientErrorCode, underlyingError: NSError? = nil) {
+        var userInfo: [String: Any] = [NSLocalizedDescriptionKey: clientErrorCode.descriptionString()]
+        if let underlyingError = underlyingError {
+            userInfo[NSUnderlyingErrorKey] = underlyingError
+        }
+        let error =  NSError(domain: SCMessage.kCoapErrorDomain,
+                             code: clientErrorCode.rawValue,
+                             userInfo: userInfo)
+        
+        delegate?.swiftCoapClient(self, didFailWithError: error)
     }
     
     fileprivate func handleBlock2WithMessage(_ message: SCMessage) {
@@ -450,7 +458,7 @@ extension SCClient: SCCoAPTransportLayerDelegate {
     }
     
     public func transportLayerObject(_ transportLayerObject: SCCoAPTransportLayerProtocol, didFailWithError error: NSError) {
-        notifyDelegateWithErrorCode(.transportLayerSendError)
+        notifyDelegateWithErrorCode(.transportLayerSendError, underlyingError: error)
         transmissionTimer?.invalidate()
         transmissionTimer = nil
     }

@@ -88,14 +88,18 @@ public final class SCCoAPUDPTransportLayer: NSObject {
     var listener: NWListener?
     var networkParameters: NWParameters = .udp
 
+    private let operationsQueue = DispatchQueue(label: "swiftcoap.queue.operations", qos: .userInitiated)
+
     private func setupStateUpdateHandler(for connection: NWConnection) -> NWConnection {
         let endpoint = connection.endpoint
         connection.stateUpdateHandler = { [weak self] newState in
             switch newState {
             case .failed(let error):
                 os_log("Connection to ENDPOINT %@ FAILED", log: .default, type: .error, "\(error)", endpoint.debugDescription)
-                self?.connections[endpoint]?.cancel()
-                self?.connections.removeValue(forKey: endpoint)
+                self?.operationsQueue.async(flags: .barrier) {
+                    self?.connections[endpoint]?.cancel()
+                    self?.connections.removeValue(forKey: endpoint)
+                }
                 guard let self = self else { return }
                 self.transportLayerDelegate?.transportLayerObject(self, didFailWithError: error as NSError)
             case .setup:
@@ -110,7 +114,9 @@ public final class SCCoAPUDPTransportLayer: NSObject {
                 self.startReads(from: connection)
             case .cancelled:
                 os_log("Connection to ENDPOINT %@ is CANCELLED", log: .default, type: .info, endpoint.debugDescription)
-                self?.connections.removeValue(forKey: endpoint)
+                self?.operationsQueue.async(flags: .barrier) {
+                    self?.connections.removeValue(forKey: endpoint)
+                }
             @unknown default:
                 os_log("Connection to ENDPOINT %@ is in UNKNOWN state", log: .default, type: .info, endpoint.debugDescription)
             }
@@ -127,7 +133,9 @@ public final class SCCoAPUDPTransportLayer: NSObject {
         // Setup handler and start the new connection
         let connection = setupStateUpdateHandler(for: NWConnection(to: endpoint, using: networkParameters))
         connection.start(queue: DispatchQueue.global(qos: .utility))
-        connections[connectionKey] = connection
+        operationsQueue.async(flags: .barrier) {[weak self] in
+            self?.connections[connectionKey] = connection
+        }
         return connection
     }
 
@@ -197,12 +205,14 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
     }
     
     public func closeTransmission() {
-        listener?.cancel()
-        listener = nil
-        connections.forEach{
-            $0.value.cancel()
+        operationsQueue.async(flags: .barrier) {[weak self] in
+            self?.listener?.cancel()
+            self?.listener = nil
+            self?.connections.forEach{
+                $0.value.cancel()
+            }
+            self?.connections = [:]
         }
-        connections = [:]
     }
 
     public func startListening() throws {
@@ -212,14 +222,19 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
     
     public func startListening(onPort listenPort: UInt16) throws {
         listener?.cancel() // Should release the sockets if there are some unused listeners left.
-        listener = try NWListener(using: networkParameters, on: NWEndpoint.Port(rawValue: listenPort)!)
+        let newListener = try NWListener(using: networkParameters, on: NWEndpoint.Port(rawValue: listenPort)!)
+        operationsQueue.async(flags: .barrier) {[weak self] in
+            self?.listener = newListener
+        }
         listener?.newConnectionHandler = { [weak self] newConnection in
             guard let self = self else { return }
             os_log("Connection attempt on endpoint %@", log: .default, type: .info, newConnection.endpoint.debugDescription)
             let connection = self.setupStateUpdateHandler(for: newConnection)
             connection.start(queue: DispatchQueue.global(qos: .utility))
             self.startReads(from: connection)
-            self.connections[newConnection.endpoint] = connection
+            self.operationsQueue.async(flags: .barrier) {
+                self.connections[newConnection.endpoint] = connection
+            }
         }
         listener?.stateUpdateHandler = { [weak self] newState in
             switch newState {

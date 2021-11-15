@@ -72,13 +72,13 @@ public class SCClient: NSObject {
     
     //PRIVATE PROPERTIES
     
-    fileprivate var transportLayerObject: SCCoAPTransportLayerProtocol!
-    fileprivate var transmissionTimer: Timer!
-    fileprivate var messageInTransmission: SCMessage!
+    fileprivate var transportLayerObject: SCCoAPTransportLayerProtocol?
+    fileprivate var transmissionTimer: Timer?
+    fileprivate var messageInTransmission: SCMessage?
     fileprivate var currentMessageId: UInt16 = UInt16(arc4random_uniform(0xFFFF) &+ 1)
     fileprivate var retransmissionCounter = 0
     fileprivate var currentTransmitWait = 0.0
-    fileprivate var recentNotificationInfo: (Date, UInt)!
+    fileprivate var recentNotificationInfo: (Date, UInt)?
     lazy fileprivate var cachedMessagePairs = [SCMessage : SCMessage]()
 
     
@@ -88,7 +88,7 @@ public class SCClient: NSObject {
         self.delegate = delegate
         super.init()
         self.transportLayerObject = transportLayerObject
-        self.transportLayerObject.transportLayerDelegate = self
+        self.transportLayerObject?.transportLayerDelegate = self
     }
 
     public func sendCoAPMessage(_ message: SCMessage, hostName: String, port: UInt16) {
@@ -155,7 +155,8 @@ public class SCClient: NSObject {
     
     // Cancels observe directly, sending the previous message with an Observe-Option Value of 1. Only effective, if the previous message initiated a registration as observer with the respective server. To cancel observer indirectly (forget about the current state) call "closeTransmission()" or send another Message (this cleans up the old state automatically)
     public func cancelObserve() {
-        guard messageInTransmission != nil else { return } // Should safeguard from crash in case when `cancelObserve` and `closeTransmission` are called out of order.
+        // Should safeguard from crash in case when `cancelObserve` and `closeTransmission` are called out of order.
+        guard let messageInTransmission = messageInTransmission else { return }
         let cancelMessage = SCMessage(code: SCCodeValue(classValue: 0, detailValue: 01)!, type: .nonConfirmable, payload: nil)
         cancelMessage.token = messageInTransmission.token
         cancelMessage.options = messageInTransmission.options
@@ -173,7 +174,7 @@ public class SCClient: NSObject {
     //Closes the transmission. It is recommended to call this method anytime you do not expect to receive a response any longer.
     
     public func closeTransmission() {
-        transportLayerObject.closeTransmission()
+        transportLayerObject?.closeTransmission()
         messageInTransmission = nil
         isMessageInTransmission = false
         transmissionTimer?.invalidate()
@@ -190,7 +191,7 @@ public class SCClient: NSObject {
         transmissionTimer = nil
         recentNotificationInfo = nil
         
-        if messageInTransmission.type == .confirmable && !disableRetransmissions {
+        if messageInTransmission?.type == .confirmable && !disableRetransmissions {
             retransmissionCounter = 0
             currentTransmitWait = 0
             sendWithRentransmissionHandling()
@@ -214,6 +215,13 @@ public class SCClient: NSObject {
         else {
             transmissionTimer = Timer(timeInterval: SCMessage.kMaxTransmitWait - currentTransmitWait, target: self, selector: #selector(SCClient.notifyNoResponseExpected), userInfo: nil, repeats: false)
         }
+        // Have seen the case when the new message was attempded to be sent while the timer was invalidated (possibly from `transportLayerObject(_: didFailWithError:)`).
+        // TODO: Have to check the root case of the rare crashes described above.
+        guard let transmissionTimer = transmissionTimer, transmissionTimer.isValid else {
+            transmissionTimer?.invalidate()
+            transmissionTimer = nil
+            return
+        }
         RunLoop.current.add(transmissionTimer, forMode: RunLoop.Mode.common)
     }
     
@@ -225,6 +233,7 @@ public class SCClient: NSObject {
     }
     
     fileprivate func sendPendingMessage() {
+        guard let messageInTransmission = messageInTransmission else { return }
         if let data = messageInTransmission.toData() {
             sendCoAPMessageOverTransportLayerWithData(data as Data, endpoint: messageInTransmission.endpoint!, notifyDelegateAfterSuccess: true)
         }
@@ -245,8 +254,9 @@ public class SCClient: NSObject {
     
     fileprivate func sendCoAPMessageOverTransportLayerWithData(_ data: Data, endpoint: NWEndpoint, notifyDelegateAfterSuccess: Bool = false) {
         do {
-            try transportLayerObject.sendCoAPData(data, toEndpoint: endpoint)
+            try transportLayerObject?.sendCoAPData(data, toEndpoint: endpoint)
             if notifyDelegateAfterSuccess {
+                guard let messageInTransmission = messageInTransmission else { return }
                 delegate?.swiftCoapClient(self, didSendMessage: messageInTransmission, number: retransmissionCounter + 1)
             }
         }
@@ -278,6 +288,7 @@ public class SCClient: NSObject {
     fileprivate func handleBlock2WithMessage(_ message: SCMessage) {
         if let block2opt = message.options[SCOption.block2.rawValue], let blockData = block2opt.first {
             let actualValue = UInt.fromData(blockData)
+            guard let messageInTransmission = messageInTransmission else { return }
             if actualValue & 8 == 8 {
                 //more bit is set, request next block
                 let blockMessage = SCMessage(code: messageInTransmission.code, type: messageInTransmission.type, payload: messageInTransmission.payload)
@@ -294,6 +305,7 @@ public class SCClient: NSObject {
     }
     
     fileprivate func continueBlock1ForBlockNumber(_ block: Int, szx: UInt) {
+        guard let messageInTransmission = messageInTransmission else { return }
         let byteSize = pow(2, Double(szx) + 4)
         let blocksCount = ceil(Double(messageInTransmission.blockBody!.count) / byteSize)
         if block < Int(blocksCount) {
@@ -314,6 +326,7 @@ public class SCClient: NSObject {
     }
     
     fileprivate func sendBlock1MessageForCurrentContext(payload: Data, blockValue: UInt) {
+        guard let messageInTransmission = messageInTransmission else { return }
         let blockMessage = SCMessage(code: messageInTransmission.code, type: messageInTransmission.type, payload: payload)
         blockMessage.options = messageInTransmission.options
         blockMessage.blockBody = messageInTransmission.blockBody
@@ -342,8 +355,9 @@ public class SCClient: NSObject {
                 let coapResponse = SCMessage.fromHttpUrlResponse(response as! HTTPURLResponse, data: data)
                 coapResponse.timeStamp = Date()
                 
-                if self.cachingActive && self.messageInTransmission.code == SCCodeValue(classValue: 0, detailValue: 01) {
-                    self.cachedMessagePairs[self.messageInTransmission] = SCMessage.copyFromMessage(coapResponse)
+                if let messageInTransmission = self.messageInTransmission,
+                   self.cachingActive && messageInTransmission.code == SCCodeValue(classValue: 0, detailValue: 01) {
+                    self.cachedMessagePairs[messageInTransmission] = SCMessage.copyFromMessage(coapResponse)
                 }
                 
                 self.delegate?.swiftCoapClient(self, didReceiveMessage: coapResponse)
@@ -384,6 +398,8 @@ public class SCClient: NSObject {
 extension SCClient: SCCoAPTransportLayerDelegate {
     public func transportLayerObject(_ transportLayerObject: SCCoAPTransportLayerProtocol, didReceiveData data: Data, fromEndpoint endpoint: NWEndpoint) {
         if let message = SCMessage.fromData(data) {
+            // Things are wasted if this guard fails, but it'd prevent the app from crash.
+            guard let messageInTransmission = messageInTransmission else { return }
 
             //Check for spam
             if message.messageId != messageInTransmission.messageId && message.token != messageInTransmission.token {
@@ -412,9 +428,9 @@ extension SCClient: SCCoAPTransportLayerDelegate {
             if let observeValueArray = message.options[SCOption.observe.rawValue], let observeValue = observeValueArray.first {
                 let currentNumber  = UInt.fromData(observeValue)
                 if recentNotificationInfo == nil ||
-                    (recentNotificationInfo.1 < currentNumber && currentNumber - recentNotificationInfo.1 < kMaxObserveOptionValue) ||
-                    (recentNotificationInfo.1 > currentNumber && recentNotificationInfo.1 - currentNumber > kMaxObserveOptionValue) ||
-                    (recentNotificationInfo.0 .compare(message.timeStamp!.addingTimeInterval(128)) == .orderedAscending) {
+                    (recentNotificationInfo!.1 < currentNumber && currentNumber - recentNotificationInfo!.1 < kMaxObserveOptionValue) ||
+                    (recentNotificationInfo!.1 > currentNumber && recentNotificationInfo!.1 - currentNumber > kMaxObserveOptionValue) ||
+                    (recentNotificationInfo!.0 .compare(message.timeStamp!.addingTimeInterval(128)) == .orderedAscending) {
                     recentNotificationInfo = (message.timeStamp!, currentNumber)
                 }
                 else {

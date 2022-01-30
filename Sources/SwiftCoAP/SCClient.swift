@@ -59,7 +59,6 @@ public class SCClient: NSObject {
     //INTERNAL PROPERTIES (allowed to modify)
     
     public weak var delegate: SCClientDelegate?
-    public var sendToken = true   //If true, a token with 4-8 Bytes is sent
     public var autoBlock1SZX: UInt? = 2 { didSet { if let newValue = autoBlock1SZX { autoBlock1SZX = min(6, newValue) } } } //If not nil, Block1 transfer will be used automatically when the payload size exceeds the value 2^(autoBlock1SZX + 4). Valid Values: 0-6.
     
     public var httpProxyingData: (hostName: String, port: UInt16)?     //If not nil, all messages will be sent via http to the given proxy address
@@ -72,10 +71,10 @@ public class SCClient: NSObject {
     
     //PRIVATE PROPERTIES
     
-    fileprivate var transportLayerObject: SCCoAPTransportLayerProtocol?
+    fileprivate var transportLayerObject: SCCoAPTransportLayerProtocol
     fileprivate var transmissionTimer: Timer?
     fileprivate var messageInTransmission: SCMessage?
-    fileprivate var currentMessageId: UInt16 = UInt16(arc4random_uniform(0xFFFF) &+ 1)
+    fileprivate var currentToken: UInt64 = UInt64(arc4random_uniform(0xFFFFFFFF) + 1) + (UInt64(arc4random_uniform(0xFFFFFFFF) + 1) << 32)
     fileprivate var retransmissionCounter = 0
     fileprivate var currentTransmitWait = 0.0
     fileprivate var recentNotificationInfo: (Date, UInt)?
@@ -86,9 +85,8 @@ public class SCClient: NSObject {
     
     public init(delegate: SCClientDelegate?, transportLayerObject: SCCoAPTransportLayerProtocol = SCCoAPUDPTransportLayer()) {
         self.delegate = delegate
-        super.init()
         self.transportLayerObject = transportLayerObject
-        self.transportLayerObject?.transportLayerDelegate = self
+        super.init()
     }
 
     public func sendCoAPMessage(_ message: SCMessage, hostName: String, port: UInt16) {
@@ -102,7 +100,7 @@ public class SCClient: NSObject {
     }
     
     public func sendCoAPMessage(_ message: SCMessage, endpoint: NWEndpoint) {
-        currentMessageId = (currentMessageId % 0xFFFF) + 1
+        let currentMessageId = self.transportLayerObject.getMessageId(for: endpoint)
         
         message.endpoint = endpoint
         message.messageId = currentMessageId
@@ -110,9 +108,7 @@ public class SCClient: NSObject {
         
         messageInTransmission = message
         
-        if sendToken {
-            message.token = UInt64(arc4random_uniform(0xFFFFFFFF) + 1) + (UInt64(arc4random_uniform(0xFFFFFFFF) + 1) << 32)
-        }
+        message.token = currentToken
         
         if cachingActive && message.code == SCCodeValue(classValue: 0, detailValue: 01) {
             for cachedMessage in cachedMessagePairs.keys {
@@ -156,25 +152,25 @@ public class SCClient: NSObject {
     // Cancels observe directly, sending the previous message with an Observe-Option Value of 1. Only effective, if the previous message initiated a registration as observer with the respective server. To cancel observer indirectly (forget about the current state) call "closeTransmission()" or send another Message (this cleans up the old state automatically)
     public func cancelObserve() {
         // Should safeguard from crash in case when `cancelObserve` and `closeTransmission` are called out of order.
-        guard let messageInTransmission = messageInTransmission else { return }
+        guard let messageInTransmission = messageInTransmission, let endpoint = messageInTransmission.endpoint else { return }
         let cancelMessage = SCMessage(code: SCCodeValue(classValue: 0, detailValue: 01)!, type: .nonConfirmable, payload: nil)
         cancelMessage.token = messageInTransmission.token
         cancelMessage.options = messageInTransmission.options
-        currentMessageId = (currentMessageId % 0xFFFF) + 1
+        let currentMessageId = self.transportLayerObject.getMessageId(for: endpoint)
         cancelMessage.messageId = currentMessageId
-        cancelMessage.endpoint = messageInTransmission.endpoint
+        cancelMessage.endpoint = endpoint
         var cancelByte: UInt8 = 1
         cancelMessage.options[SCOption.observe.rawValue] = [Data(bytes: &cancelByte, count: 1)]
-        if let messageData = cancelMessage.toData() {
-            sendCoAPMessageOverTransportLayerWithData(messageData, endpoint: messageInTransmission.endpoint!)
-        }
+        sendCoAPMessageOverTransportLayerWithData(cancelMessage, endpoint: messageInTransmission.endpoint!)
     }
     
     
     //Closes the transmission. It is recommended to call this method anytime you do not expect to receive a response any longer.
     
     public func closeTransmission() {
-        transportLayerObject?.closeTransmission()
+        if let messageInTransmission = messageInTransmission, let endpoint = messageInTransmission.endpoint {
+            transportLayerObject.closeTransmission(for: endpoint, withToken: messageInTransmission.token)
+        }
         messageInTransmission = nil
         isMessageInTransmission = false
         transmissionTimer?.invalidate()
@@ -234,27 +230,18 @@ public class SCClient: NSObject {
     
     fileprivate func sendPendingMessage() {
         guard let messageInTransmission = messageInTransmission else { return }
-        if let data = messageInTransmission.toData() {
-            sendCoAPMessageOverTransportLayerWithData(data as Data, endpoint: messageInTransmission.endpoint!, notifyDelegateAfterSuccess: true)
-        }
-        else {
+        guard let _ = messageInTransmission.toData() else {
             closeTransmission()
             notifyDelegateWithErrorCode(.messageInvalidForSendingError)
+            return
         }
+        sendCoAPMessageOverTransportLayerWithData(messageInTransmission, endpoint: messageInTransmission.endpoint!, notifyDelegateAfterSuccess: true)
     }
     
-    fileprivate func sendEmptyMessageWithType(_ type: SCType, messageId: UInt16, toEndpoint endpoint: NWEndpoint) {
-        let emptyMessage = SCMessage()
-        emptyMessage.type = type;
-        emptyMessage.messageId = messageId
-        if let messageData = emptyMessage.toData() {
-            sendCoAPMessageOverTransportLayerWithData(messageData as Data, endpoint: endpoint)
-        }
-    }
-    
-    fileprivate func sendCoAPMessageOverTransportLayerWithData(_ data: Data, endpoint: NWEndpoint, notifyDelegateAfterSuccess: Bool = false) {
+
+    fileprivate func sendCoAPMessageOverTransportLayerWithData(_ message: SCMessage, endpoint: NWEndpoint, notifyDelegateAfterSuccess: Bool = false) {
         do {
-            try transportLayerObject?.sendCoAPData(data, toEndpoint: endpoint)
+            try transportLayerObject.sendCoAPMessage(message, toEndpoint: endpoint, token:self.currentToken, delegate:self)
             if notifyDelegateAfterSuccess {
                 guard let messageInTransmission = messageInTransmission else { return }
                 delegate?.swiftCoapClient(self, didSendMessage: messageInTransmission, number: retransmissionCounter + 1)
@@ -401,13 +388,7 @@ extension SCClient: SCCoAPTransportLayerDelegate {
             // Things are wasted if this guard fails, but it'd prevent the app from crash.
             guard let messageInTransmission = messageInTransmission else { return }
 
-            //Check for spam
-            if message.messageId != messageInTransmission.messageId && message.token != messageInTransmission.token {
-                if message.type.rawValue <= SCType.nonConfirmable.rawValue {
-                    sendEmptyMessageWithType(.reset, messageId: message.messageId, toEndpoint: endpoint)
-                }
-                return
-            }
+            
 
             //Invalidate Timer
             transmissionTimer?.invalidate()
@@ -457,11 +438,6 @@ extension SCClient: SCCoAPTransportLayerDelegate {
                     }
                     continueBlock1ForBlockNumber(Int(actualValue) + blockOffset, szx: serverSZX)
                 }
-            }
-            
-            //Further Operations
-            if message.type == .confirmable {
-                sendEmptyMessageWithType(.acknowledgement, messageId: message.messageId, toEndpoint: endpoint)
             }
             
             if (message.type != .acknowledgement || message.code.toCodeSample() != .empty) && message.options[SCOption.block2.rawValue] == nil && message.code.toCodeSample() != SCCodeSample.continue {

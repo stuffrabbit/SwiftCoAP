@@ -186,6 +186,7 @@ public final class SCCoAPUDPTransportLayer: NSObject {
                      */
                     if message.type == .confirmable && self.transportLayerDelegates[id] == nil{
                         self.sendEmptyMessageWithType(.reset, messageId: message.messageId, token: nil, toEndpoint: connection.endpoint)
+                        return
                     }
                     
                     if message.type == .confirmable {

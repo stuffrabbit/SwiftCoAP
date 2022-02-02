@@ -14,7 +14,7 @@ import os.log
 //MARK: - SC Coap Transport Layer Error Enumeration
 
 public enum SCCoAPTransportLayerError: Error {
-    case setupError(errorDescription: String), sendError(errorDescription: String), encodeError
+    case setupError(errorDescription: String), sendError(errorDescription: String), encodeError, pingTimeoutError
 }
 
 
@@ -89,16 +89,24 @@ public struct MessageTransportDelegate {
     let observation: Bool
 }
 
+public struct CoAPConnection {
+    let connection: NWConnection;
+    var lastReceivedMessageTs: TimeInterval;
+    var pingTimer: Timer?;
+}
+
 //MARK: - SC CoAP UDP Transport Layer
 /// SC CoAP UDP Transport Layer: This class is the default transport layer handler, sending data via UDP with help of `Network.framework`. If you want to create a custom transport layer handler, you have to create a custom class and adopt the SCCoAPTransportLayerProtocol. Next you have to pass your class to the init method of SCClient: init(delegate: SCClientDelegate?, transportLayerObject: SCCoAPTransportLayerProtocol). You will than get callbacks to send CoAP data and have to inform your delegate (in this case an object of type SCClient) when you receive a response by using the callbacks from SCCoAPTransportLayerDelegate.
 public final class SCCoAPUDPTransportLayer: NSObject {
+    fileprivate let kPingInterval:TimeInterval = 5
     public var transportLayerDelegates: [MessageTransportIdentifier: MessageTransportDelegate] = [:]
-    var connections: [NWEndpoint: NWConnection] = [:]
+    var connections: [NWEndpoint: CoAPConnection] = [:]
+    var tt: Timer? = nil
     var messageIdsPerEndpont:[NWEndpoint:UInt16] = [:]
     var listener: NWListener?
     var networkParameters: NWParameters = .udp
 
-    private let operationsQueue = DispatchQueue(label: "swiftcoap.queue.operations", qos: .userInitiated)
+    private let operationsQueue = DispatchQueue(label: "swiftcoap.queue.operations", qos: .default)
 
     private func setupStateUpdateHandler(for connection: NWConnection) -> NWConnection {
         let endpoint = connection.endpoint
@@ -107,7 +115,9 @@ public final class SCCoAPUDPTransportLayer: NSObject {
             case .failed(let error):
                 os_log("Connection to ENDPOINT %@ FAILED", log: .default, type: .error, "\(error)", endpoint.debugDescription)
                 self?.operationsQueue.sync {
-                    self?.connections[endpoint]?.cancel()
+                    self?.connections[endpoint]?.connection.cancel()
+                    self?.connections[endpoint]?.pingTimer?.invalidate()
+                    self?.connections[endpoint]?.pingTimer = nil
                     self?.connections.removeValue(forKey: endpoint)
                 }
                 guard let self = self else { return }
@@ -121,10 +131,24 @@ public final class SCCoAPUDPTransportLayer: NSObject {
             case .ready:
                 os_log("Connection to ENDPOINT %@ entered READY state", log: .default, type: .info, endpoint.debugDescription)
                 guard let self = self else { return }
+                let pingTimer = Timer(timeInterval: 5, repeats: true) { [weak self] timer in
+                    guard let self = self else {
+                        timer.invalidate()
+                        return
+                    }
+                    self.processPingTimer(timer: timer, endpoint: endpoint)
+                }
+                self.connections[connection.endpoint]?.pingTimer = pingTimer
+                // timer should be added to the runloop different from current one,
+                // it seems that the runloop powering state update handler prevents timers to fire
+                RunLoop.main.add(pingTimer, forMode: .default)
+                
                 self.startReads(from: connection)
             case .cancelled:
                 os_log("Connection to ENDPOINT %@ is CANCELLED", log: .default, type: .info, endpoint.debugDescription)
                 let _ = self?.operationsQueue.sync {
+                    self?.connections[endpoint]?.pingTimer?.invalidate()
+                    self?.connections[endpoint]?.pingTimer = nil
                     self?.connections.removeValue(forKey: endpoint)
                 }
             @unknown default:
@@ -137,13 +161,15 @@ public final class SCCoAPUDPTransportLayer: NSObject {
     private func mustGetConnection(forEndpoint endpoint: NWEndpoint) -> NWConnection {
         let connectionKey = endpoint
         // Reuse only connections in untroubled state
-        if let connection = connections[connectionKey], ![.cancelled].contains(connection.state) {
-            return connection
+        if let coapConnection = connections[connectionKey], ![.cancelled].contains(coapConnection.connection.state) {
+            return coapConnection.connection
         }
         // Setup handler and start the new connection
         let connection = setupStateUpdateHandler(for: NWConnection(to: endpoint, using: networkParameters))
-        self.connections[connectionKey] = connection
-        connection.start(queue: DispatchQueue.global(qos: .utility))
+        
+        print("Starting new connection")
+        self.connections[connectionKey] = CoAPConnection(connection: connection, lastReceivedMessageTs: Date().timeIntervalSince1970, pingTimer: nil)
+        connection.start(queue: DispatchQueue.global(qos: .default))
         return connection
     }
 
@@ -158,11 +184,7 @@ public final class SCCoAPUDPTransportLayer: NSObject {
                 return
             }
             if let error = maybeError {
-                self.transportLayerDelegates.forEach { (key, value) in
-                    if key.endpoint == connection.endpoint {
-                        value.delegate.transportLayerObject(self, didFailWithError: error as NSError)
-                    }
-                }
+                self.notifyDelegatesAboutError(for: connection.endpoint, error: error)
                 connection.cancel()
                 return
             }
@@ -171,6 +193,7 @@ public final class SCCoAPUDPTransportLayer: NSObject {
                     // Send confirmation if message is confirmable
                     let token = message.token
                     self.updateMessageId(for: connection.endpoint, newMessageId: message.messageId)
+                    self.updateLastReceivedMessageTs(for: connection.endpoint)
                     os_log(">>> %@",log: .default, type:.info, "Endpoint: \(connection.endpoint.debugDescription), Message ID \(message.messageId ?? 0), token \(token), type: \(message.type.shortString()), code: \(message.code.toString())")
                     
                     let id = MessageTransportIdentifier(token: token, endpoint: connection.endpoint)
@@ -218,6 +241,63 @@ public final class SCCoAPUDPTransportLayer: NSObject {
         }
     }
     
+    fileprivate func updateLastReceivedMessageTs(for endpoint: NWEndpoint) {
+        operationsQueue.sync {
+            self.connections[endpoint]?.lastReceivedMessageTs = Date().timeIntervalSince1970
+        }
+    }
+    
+    fileprivate func notifyDelegatesAboutError(for endpoint: NWEndpoint, error: Error) {
+        self.transportLayerDelegates.forEach { (key, value) in
+            if key.endpoint == endpoint {
+                value.delegate.transportLayerObject(self, didFailWithError: error as NSError)
+            }
+        }
+    }
+    
+    fileprivate func processPingTimer(timer: Timer, endpoint:NWEndpoint) {
+        guard let coapConnection = self.connections[endpoint] else {
+            timer.invalidate()
+            return
+        }
+        guard ![.cancelled].contains(coapConnection.connection.state) else {
+            timer.invalidate()
+            return
+        }
+        // if there were no messages for 3*ping intervals -> connection is stale and probably broken
+        // The best we can do in this situation is to cancel the connection and let upper levels to
+        // decide what to do
+        if coapConnection.lastReceivedMessageTs + self.kPingInterval * 3 < Date().timeIntervalSince1970 {
+            os_log("Ping timeout exceeded, closing the connection for endpoint %@", log: .default, type: .info, endpoint.debugDescription)
+            coapConnection.connection.cancel()
+            self.notifyDelegatesAboutError(for: endpoint, error: SCCoAPTransportLayerError.pingTimeoutError)
+            return
+        }
+        // if the most recent message was received within a duration of keep alive timer then
+        // we need to extend the timer for the number of seconds to get the full keep-alive interval
+        let elapsedFromLastMessage = floor(Date().timeIntervalSince1970 - coapConnection.lastReceivedMessageTs)
+        if elapsedFromLastMessage < self.kPingInterval {
+            coapConnection.pingTimer?.fireDate = Date().addingTimeInterval(self.kPingInterval - elapsedFromLastMessage)
+        } else {
+            os_log("Sending ping message to endpoint %@", log: .default, type: .info, endpoint.debugDescription)
+            /*
+             
+             Reset Message
+                A Reset message indicates that a specific message (Confirmable or
+                Non-confirmable) was received, but some context is missing to
+                properly process it.  This condition is usually caused when the
+                receiving node has rebooted and has forgotten some state that
+                would be required to interpret the message.  Provoking a Reset
+                message (e.g., by sending an Empty Confirmable message) is also
+                useful as an inexpensive check of the liveness of an endpoint
+                ("CoAP ping").
+             
+             */
+            self.sendEmptyMessageWithType(.confirmable, messageId: self.getMessageId(for: endpoint), token: nil, toEndpoint: endpoint)
+            // +1 here to give the message time to go to the device and back and avoid timer firing too early
+            coapConnection.pingTimer?.fireDate = Date().addingTimeInterval(self.kPingInterval + 1)
+        }
+    }
 }
 
 extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {

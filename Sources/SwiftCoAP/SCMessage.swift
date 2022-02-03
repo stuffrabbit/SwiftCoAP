@@ -167,7 +167,6 @@ public final class SCCoAPUDPTransportLayer: NSObject {
         // Setup handler and start the new connection
         let connection = setupStateUpdateHandler(for: NWConnection(to: endpoint, using: networkParameters))
         
-        print("Starting new connection")
         self.connections[connectionKey] = CoAPConnection(connection: connection, lastReceivedMessageTs: Date().timeIntervalSince1970, pingTimer: nil)
         connection.start(queue: DispatchQueue.global(qos: .default))
         return connection

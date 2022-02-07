@@ -45,9 +45,6 @@ extension SCCoAPTransportLayerDelegate {
 //MARK: - SC CoAP Transport Layer Protocol declaration
 
 public protocol SCCoAPTransportLayerProtocol: AnyObject {
-    // SCClient uses this property to assign itself as delegate
-    var transportLayerDelegates: [MessageTransportIdentifier:MessageTransportDelegate] { get set }
-    
     // `SClient` calls one of the following methods when it wants to send CoAP data.
     //
     // Only a `sendCoAPData(_ data: Data, toEndpoint endpoint: NWEndpoint)` should be implemented.
@@ -99,11 +96,11 @@ public struct CoAPConnection {
 /// SC CoAP UDP Transport Layer: This class is the default transport layer handler, sending data via UDP with help of `Network.framework`. If you want to create a custom transport layer handler, you have to create a custom class and adopt the SCCoAPTransportLayerProtocol. Next you have to pass your class to the init method of SCClient: init(delegate: SCClientDelegate?, transportLayerObject: SCCoAPTransportLayerProtocol). You will than get callbacks to send CoAP data and have to inform your delegate (in this case an object of type SCClient) when you receive a response by using the callbacks from SCCoAPTransportLayerDelegate.
 public final class SCCoAPUDPTransportLayer: NSObject {
     fileprivate let kPingInterval:TimeInterval = 5
-    public var transportLayerDelegates: [MessageTransportIdentifier: MessageTransportDelegate] = [:]
-    var connections: [NWEndpoint: CoAPConnection] = [:]
-    var messageIdsPerEndpont:[NWEndpoint:UInt16] = [:]
-    var listener: NWListener?
-    var networkParameters: NWParameters = .udp
+    fileprivate var transportLayerDelegates: [MessageTransportIdentifier: MessageTransportDelegate] = [:]
+    fileprivate var connections: [NWEndpoint: CoAPConnection] = [:]
+    fileprivate var messageIdsPerEndpont:[NWEndpoint:UInt16] = [:]
+    fileprivate var listener: NWListener?
+    fileprivate var networkParameters: NWParameters = .udp
 
     private let operationsQueue = DispatchQueue(label: "swiftcoap.queue.operations", qos: .default)
 

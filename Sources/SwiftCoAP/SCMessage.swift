@@ -53,8 +53,6 @@ public protocol SCCoAPTransportLayerProtocol: AnyObject {
     func sendCoAPMessage(_ message: SCMessage, toHost host: String, port: UInt16, token: UInt64?, delegate: SCCoAPTransportLayerDelegate?) throws
     func sendCoAPMessage(_ message: SCMessage, toEndpoint endpoint: NWEndpoint, token: UInt64?, delegate: SCCoAPTransportLayerDelegate?) throws
     
-    func sendEmptyMessageWithType(_ type: SCType, messageId: UInt16, token: UInt64?, toEndpoint endpoint: NWEndpoint)
-
     func getMessageId(for endpoint:NWEndpoint) -> UInt16
     // Called when the transmission is over. Clear your states (e.g. close sockets)
     func closeTransmission(for endpoint: NWEndpoint, withToken: UInt64)
@@ -222,7 +220,7 @@ public final class SCCoAPUDPTransportLayer: NSObject {
         }
     }
     
-    public func sendEmptyMessageWithType(_ type: SCType, messageId: UInt16, token: UInt64?, toEndpoint endpoint: NWEndpoint) {
+    fileprivate func sendEmptyMessageWithType(_ type: SCType, messageId: UInt16, token: UInt64?, toEndpoint endpoint: NWEndpoint) {
         let emptyMessage = SCMessage()
         emptyMessage.type = type;
         emptyMessage.messageId = messageId

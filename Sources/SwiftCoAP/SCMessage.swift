@@ -101,7 +101,6 @@ public final class SCCoAPUDPTransportLayer: NSObject {
     fileprivate let kPingInterval:TimeInterval = 5
     public var transportLayerDelegates: [MessageTransportIdentifier: MessageTransportDelegate] = [:]
     var connections: [NWEndpoint: CoAPConnection] = [:]
-    var tt: Timer? = nil
     var messageIdsPerEndpont:[NWEndpoint:UInt16] = [:]
     var listener: NWListener?
     var networkParameters: NWParameters = .udp
@@ -131,7 +130,7 @@ public final class SCCoAPUDPTransportLayer: NSObject {
             case .ready:
                 os_log("Connection to ENDPOINT %@ entered READY state", log: .default, type: .info, endpoint.debugDescription)
                 guard let self = self else { return }
-                let pingTimer = Timer(timeInterval: 5, repeats: true) { [weak self] timer in
+                let pingTimer = Timer(timeInterval: self.kPingInterval, repeats: true) { [weak self] timer in
                     guard let self = self else {
                         timer.invalidate()
                         return
@@ -193,7 +192,7 @@ public final class SCCoAPUDPTransportLayer: NSObject {
                     let token = message.token
                     self.updateMessageId(for: connection.endpoint, newMessageId: message.messageId)
                     self.updateLastReceivedMessageTs(for: connection.endpoint)
-                    os_log(">>> %@",log: .default, type:.info, "Endpoint: \(connection.endpoint.debugDescription), Message ID \(message.messageId ?? 0), token \(token), type: \(message.type.shortString()), code: \(message.code.toString())")
+                    os_log(">>> %@",log: .default, type:.debug, "Endpoint: \(connection.endpoint.debugDescription), Message ID \(message.messageId ?? 0), token \(token), type: \(message.type.shortString()), code: \(message.code.toString())")
                     
                     let id = MessageTransportIdentifier(token: token, endpoint: connection.endpoint)
  
@@ -278,7 +277,7 @@ public final class SCCoAPUDPTransportLayer: NSObject {
         if elapsedFromLastMessage < self.kPingInterval {
             coapConnection.pingTimer?.fireDate = Date().addingTimeInterval(self.kPingInterval - elapsedFromLastMessage)
         } else {
-            os_log("Sending ping message to endpoint %@", log: .default, type: .info, endpoint.debugDescription)
+            os_log("Sending ping message to endpoint %@", log: .default, type: .debug, endpoint.debugDescription)
             /*
              
              Reset Message
@@ -363,7 +362,7 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
             if let delegate = delegate, let token = token {
                 self.transportLayerDelegates[MessageTransportIdentifier(token: token, endpoint: endpoint)] = MessageTransportDelegate(delegate: delegate, observation: observation)
             }
-            os_log("<<< %@",log: .default, type:.info, "Endpoint: \(endpoint.debugDescription), Message ID \(message.messageId ?? 0), token \(message.token), type: \(message.type.shortString()), code: \(message.code.toString()), path: \(path ?? [""]), observe: \(observation) ")
+            os_log("<<< %@",log: .default, type:.debug, "Endpoint: \(endpoint.debugDescription), Message ID \(message.messageId ?? 0), token \(message.token), type: \(message.type.shortString()), code: \(message.code.toString()), path: \(path ?? [""]), observe: \(observation) ")
             connection.send(content: data, completion: .contentProcessed{ [weak self] error in
                 guard let self = self else { return }
                 if error != nil {

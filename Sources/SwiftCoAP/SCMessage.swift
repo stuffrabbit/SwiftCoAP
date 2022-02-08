@@ -258,7 +258,7 @@ public final class SCCoAPUDPTransportLayer: NSObject {
             return
         }
         // if there were no messages for 3*ping intervals -> connection is stale and probably broken
-        // The best we can do in this situation is to cancel the connection and let upper levels to
+        // The best we can do in this situation is to cancel the connection and let upper levels
         // decide what to do
         if coapConnection.lastReceivedMessageTs + self.kPingInterval * 3 < Date().timeIntervalSince1970 {
             os_log("Ping timeout exceeded, closing the connection for endpoint %@", log: .default, type: .info, endpoint.debugDescription)
@@ -266,8 +266,8 @@ public final class SCCoAPUDPTransportLayer: NSObject {
             self.notifyDelegatesAboutError(for: endpoint, error: SCCoAPTransportLayerError.pingTimeoutError)
             return
         }
-        // if the most recent message was received within a duration of keep alive timer then
-        // we need to extend the timer for the number of seconds to get the full keep-alive interval
+        // if the most recent message was received within a duration of keep-alive interval then
+        // we need to extend the timer to get the full interval of inactivity
         let elapsedFromLastMessage = floor(Date().timeIntervalSince1970 - coapConnection.lastReceivedMessageTs)
         if elapsedFromLastMessage < self.kPingInterval {
             coapConnection.pingTimer?.fireDate = Date().addingTimeInterval(self.kPingInterval - elapsedFromLastMessage)
@@ -383,7 +383,8 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
         psk.withUnsafeBytes{ (pointer:UnsafeRawBufferPointer) in
             defer { semaphore.signal() }
             let dd = DispatchData(bytes: pointer)
-            sec_protocol_options_add_pre_shared_key(tlsOptions.securityProtocolOptions, dd as __DispatchData, dd as __DispatchData)
+            let hint = DispatchData(bytes: "".data(using: .utf8)!.withUnsafeBytes({ $0 }))
+            sec_protocol_options_add_pre_shared_key(tlsOptions.securityProtocolOptions, dd as __DispatchData, hint as __DispatchData )
             sec_protocol_options_append_tls_ciphersuite(tlsOptions.securityProtocolOptions, tls_ciphersuite_t(rawValue: UInt16(suite))!)
         }
         semaphore.wait()

@@ -88,16 +88,6 @@ public class SCClient: NSObject {
         self.transportLayerObject = transportLayerObject
         super.init()
     }
-
-    public func sendCoAPMessage(_ message: SCMessage, hostName: String, port: UInt16) {
-        sendCoAPMessage(
-            message,
-            endpoint: NWEndpoint.hostPort(
-                host: NWEndpoint.Host(hostName),
-                port: NWEndpoint.Port(rawValue: port)!
-            )
-        )
-    }
     
     public func sendCoAPMessage(_ message: SCMessage, endpoint: NWEndpoint) {
         let currentMessageId = self.transportLayerObject.getMessageId(for: endpoint)
@@ -169,7 +159,7 @@ public class SCClient: NSObject {
     
     public func closeTransmission() {
         if let messageInTransmission = messageInTransmission, let endpoint = messageInTransmission.endpoint {
-            transportLayerObject.closeTransmission(for: endpoint, withToken: messageInTransmission.token)
+            transportLayerObject.cancelMessageTransmission(to: endpoint, withToken: messageInTransmission.token)
         }
         messageInTransmission = nil
         isMessageInTransmission = false

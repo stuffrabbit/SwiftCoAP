@@ -36,9 +36,7 @@ extension SCCoAPTransportLayerDelegate {
             port: NWEndpoint.Port(rawValue: port)!
         ))
     }
-    public func transportLayerObject(_ transportLayerObject: SCCoAPTransportLayerProtocol, didReceiveData data: Data, fromEndpoint endpoint: NWEndpoint){
-        // NOTE: You really want to implement this method in a class, this No-Op implementation is to allow legacy code work.
-    }
+    
 }
 
 
@@ -50,29 +48,14 @@ public protocol SCCoAPTransportLayerProtocol: AnyObject {
     // Only a `sendCoAPData(_ data: Data, toEndpoint endpoint: NWEndpoint)` should be implemented.
     // A method `sendCoAPData(_ data: Data, toHost host: String, port: UInt16)` has the default implementation in protocol extension
     // just converting `host` and `port` into an `NWEndpoint` object.
-    func sendCoAPMessage(_ message: SCMessage, toHost host: String, port: UInt16, token: UInt64?, delegate: SCCoAPTransportLayerDelegate?) throws
     func sendCoAPMessage(_ message: SCMessage, toEndpoint endpoint: NWEndpoint, token: UInt64?, delegate: SCCoAPTransportLayerDelegate?) throws
     
     func getMessageId(for endpoint:NWEndpoint) -> UInt16
-    // Called when the transmission is over. Clear your states (e.g. close sockets)
-    func closeTransmission(for endpoint: NWEndpoint, withToken: UInt64)
+    func cancelMessageTransmission(to endpoint: NWEndpoint, withToken: UInt64)
+    // Closes all connections to the endpoints
+    func closeAllTransmissions()
     
 }
-
-extension SCCoAPTransportLayerProtocol {
-    public func sendCoAPMessage(_ message: SCMessage, toHost host: String, port: UInt16, token: UInt64?, delegate: SCCoAPTransportLayerDelegate?) throws {
-        try sendCoAPMessage(
-            message,
-            toEndpoint: NWEndpoint.hostPort(
-                host: NWEndpoint.Host(host),
-                port: NWEndpoint.Port(rawValue: port)!
-            ),
-            token: token,
-            delegate: delegate
-        )
-    }
-}
-
 
 public struct MessageTransportIdentifier: Hashable {
     let token: UInt64;
@@ -108,13 +91,8 @@ public final class SCCoAPUDPTransportLayer: NSObject {
             switch newState {
             case .failed(let error):
                 os_log("Connection to ENDPOINT %@ FAILED", log: .default, type: .error, "\(error)", endpoint.debugDescription)
-                self?.operationsQueue.sync {
-                    self?.connections[endpoint]?.connection.cancel()
-                    self?.connections[endpoint]?.pingTimer?.invalidate()
-                    self?.connections[endpoint]?.pingTimer = nil
-                    self?.connections.removeValue(forKey: endpoint)
-                }
                 guard let self = self else { return }
+                self.cancelConnection(to: endpoint)
                 self.transportLayerDelegates.forEach({$0.value.delegate.transportLayerObject(self, didFailWithError: error as NSError)})
             case .setup:
                 os_log("Connection to ENDPOINT %@ entered SETUP state", log: .default, type: .info, endpoint.debugDescription)
@@ -140,11 +118,8 @@ public final class SCCoAPUDPTransportLayer: NSObject {
                 self.startReads(from: connection)
             case .cancelled:
                 os_log("Connection to ENDPOINT %@ is CANCELLED", log: .default, type: .info, endpoint.debugDescription)
-                let _ = self?.operationsQueue.sync {
-                    self?.connections[endpoint]?.pingTimer?.invalidate()
-                    self?.connections[endpoint]?.pingTimer = nil
-                    self?.connections.removeValue(forKey: endpoint)
-                }
+                guard let self = self else { return }
+                self.cancelConnection(to: endpoint)
             @unknown default:
                 os_log("Connection to ENDPOINT %@ is in UNKNOWN state", log: .default, type: .info, endpoint.debugDescription)
             }
@@ -155,7 +130,7 @@ public final class SCCoAPUDPTransportLayer: NSObject {
     private func mustGetConnection(forEndpoint endpoint: NWEndpoint) -> NWConnection {
         let connectionKey = endpoint
         // Reuse only connections in untroubled state
-        if let coapConnection = connections[connectionKey], ![.cancelled].contains(coapConnection.connection.state) {
+        if let coapConnection = connections[connectionKey], coapConnection.connection.state != .cancelled {
             return coapConnection.connection
         }
         // Setup handler and start the new connection
@@ -187,7 +162,7 @@ public final class SCCoAPUDPTransportLayer: NSObject {
                     let token = message.token
                     self.updateMessageId(for: connection.endpoint, newMessageId: message.messageId)
                     self.updateLastReceivedMessageTs(for: connection.endpoint)
-                    os_log(">>> %@",log: .default, type:.debug, "Endpoint: \(connection.endpoint.debugDescription), Message ID \(message.messageId ?? 0), token \(token), type: \(message.type.shortString()), code: \(message.code.toString())")
+                    os_log(">>> %@",log: .default, type:.debug, "Endpoint: \(connection.endpoint.debugDescription), Message \(message.toString())")
                     
                     let id = MessageTransportIdentifier(token: token, endpoint: connection.endpoint)
  
@@ -253,7 +228,7 @@ public final class SCCoAPUDPTransportLayer: NSObject {
             timer.invalidate()
             return
         }
-        guard ![.cancelled].contains(coapConnection.connection.state) else {
+        guard coapConnection.connection.state != .cancelled else {
             timer.invalidate()
             return
         }
@@ -344,20 +319,12 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
     public func sendCoAPMessage(_ message: SCMessage, toEndpoint endpoint: NWEndpoint, token: UInt64?, delegate: SCCoAPTransportLayerDelegate?) throws {
         try operationsQueue.sync {[unowned self] in
             let connection = self.mustGetConnection(forEndpoint: endpoint)
-            let path = message.options.first(where: { (key, _) in
-                return key == SCOption.uriPath.rawValue
-            })?.value.map({ dt in
-                SCOption.uriPath.displayStringForData(dt)
-            })
             
             guard let data = message.toData() else { throw SCCoAPTransportLayerError.encodeError }
-            let observation = message.options.first { (k,v) in
-                k == SCOption.observe.rawValue && v[0].allSatisfy({$0 == 0})
-            } != nil
             if let delegate = delegate, let token = token {
-                self.transportLayerDelegates[MessageTransportIdentifier(token: token, endpoint: endpoint)] = MessageTransportDelegate(delegate: delegate, observation: observation)
+                self.transportLayerDelegates[MessageTransportIdentifier(token: token, endpoint: endpoint)] = MessageTransportDelegate(delegate: delegate, observation: message.isObservation())
             }
-            os_log("<<< %@",log: .default, type:.debug, "Endpoint: \(endpoint.debugDescription), Message ID \(message.messageId ?? 0), token \(message.token), type: \(message.type.shortString()), code: \(message.code.toString()), path: \(path ?? [""]), observe: \(observation) ")
+            os_log("<<< %@",log: .default, type:.debug, "Endpoint: \(endpoint.debugDescription), Message \(message.toString())")
             connection.send(content: data, completion: .contentProcessed{ [weak self] error in
                 guard let self = self else { return }
                 if error != nil {
@@ -367,12 +334,19 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
         }
     }
     
-    public func closeTransmission(for endpoint: NWEndpoint, withToken token: UInt64) {
+    public func cancelMessageTransmission(to endpoint: NWEndpoint, withToken token: UInt64) {
         let _ = operationsQueue.sync {[weak self] in
             self?.transportLayerDelegates.removeValue(forKey: MessageTransportIdentifier(token: token, endpoint: endpoint))
         }
     }
 
+    public func closeAllTransmissions() {
+        let allEndpoints = self.connections.keys
+        for endpoint in allEndpoints {
+            self.cancelConnection(to: endpoint)
+        }
+    }
+    
     private func networkParametersDTLSWith(psk: Data, suite: SSLCipherSuite) -> NWParameters{
         NWParameters(dtls: tlsWithPSKOptions(psk: psk, suite: suite), udp: NWProtocolUDP.Options())
     }
@@ -389,6 +363,16 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
         }
         semaphore.wait()
         return tlsOptions
+    }
+    
+    private func cancelConnection(to endpoint: NWEndpoint) {
+        operationsQueue.sync { [weak self] in
+            if let coapConnection = self?.connections[endpoint] {
+                coapConnection.pingTimer?.invalidate()
+                coapConnection.connection.cancel()
+            }
+            self?.connections.removeValue(forKey: endpoint)
+        }
     }
 }
 
@@ -1330,5 +1314,15 @@ public class SCMessage: NSObject {
             return (NSString(data: data, encoding: String.Encoding.utf8.rawValue) as String?) ?? "Format Error"
         }
         return String.toHexFromData(data)
+    }
+    
+    public func isObservation() -> Bool {
+       return self.options.first { (k,v) in
+           k == SCOption.observe.rawValue && v[0].allSatisfy({$0 == 0})
+       } != nil
+    }
+    
+    public func toString() -> String {
+        return "ID \(self.messageId ?? 0), token \(self.token), type: \(self.type.shortString()), code: \(self.code.toString()), path: \(self.completeUriPath()), observe: \(self.isObservation())"
     }
 }

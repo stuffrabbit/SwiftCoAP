@@ -367,11 +367,16 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
     
     private func cancelConnection(to endpoint: NWEndpoint) {
         operationsQueue.sync { [weak self] in
-            if let coapConnection = self?.connections[endpoint] {
+            guard let self = self else { return }
+            if let coapConnection = self.connections[endpoint] {
                 coapConnection.pingTimer?.invalidate()
                 coapConnection.connection.cancel()
+                let delegates = self.transportLayerDelegates.keys.filter({$0.endpoint == endpoint})
+                for delegate in delegates {
+                    self.transportLayerDelegates.removeValue(forKey: delegate)
+                }
             }
-            self?.connections.removeValue(forKey: endpoint)
+            self.connections.removeValue(forKey: endpoint)
         }
     }
 }

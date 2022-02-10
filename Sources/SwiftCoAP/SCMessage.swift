@@ -92,8 +92,8 @@ public final class SCCoAPUDPTransportLayer: NSObject {
             case .failed(let error):
                 os_log("Connection to ENDPOINT %@ FAILED", log: .default, type: .error, "\(error)", endpoint.debugDescription)
                 guard let self = self else { return }
-                self.cancelConnection(to: endpoint)
                 self.transportLayerDelegates.forEach({$0.value.delegate.transportLayerObject(self, didFailWithError: error as NSError)})
+                self.cancelConnection(to: endpoint)
             case .setup:
                 os_log("Connection to ENDPOINT %@ entered SETUP state", log: .default, type: .info, endpoint.debugDescription)
             case .waiting(let reason):
@@ -153,7 +153,7 @@ public final class SCCoAPUDPTransportLayer: NSObject {
             }
             if let error = maybeError {
                 self.notifyDelegatesAboutError(for: connection.endpoint, error: error)
-                connection.cancel()
+                self.cancelConnection(to: connection.endpoint)
                 return
             }
             if let data = data {
@@ -237,8 +237,8 @@ public final class SCCoAPUDPTransportLayer: NSObject {
         // decide what to do
         if coapConnection.lastReceivedMessageTs + self.kPingInterval * 3 < Date().timeIntervalSince1970 {
             os_log("Ping timeout exceeded, closing the connection for endpoint %@", log: .default, type: .info, endpoint.debugDescription)
-            coapConnection.connection.cancel()
             self.notifyDelegatesAboutError(for: endpoint, error: SCCoAPTransportLayerError.pingTimeoutError)
+            self.cancelConnection(to: endpoint)
             return
         }
         // if the most recent message was received within a duration of keep-alive interval then
@@ -329,6 +329,9 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
                 guard let self = self else { return }
                 if error != nil {
                     delegate?.transportLayerObject(self, didFailWithError: error! as NSError)
+                    if let token = token {
+                        self.cancelMessageTransmission(to: endpoint, withToken: token)
+                    }
                 }
             })
         }

@@ -204,8 +204,8 @@ public final class SCCoAPUDPTransportLayer: NSObject {
     }
     
     fileprivate func updateMessageId(for endpoint: NWEndpoint, newMessageId: UInt16) {
-        operationsQueue.sync { [unowned self] in
-            self.messageIdsPerEndpont[endpoint] = newMessageId
+        operationsQueue.sync { [weak self] in
+            self?.messageIdsPerEndpont[endpoint] = newMessageId
         }
     }
     
@@ -303,7 +303,8 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
     /// There could be multiple clients using the same underlying transport, so it's import to have centralized
     /// message ids issuance
     public func getMessageId(for endpoint: NWEndpoint) -> UInt16 {
-        operationsQueue.sync { [unowned self] in
+        operationsQueue.sync { [weak self] in
+            guard let self = self else { return 0 }
             if let currentMessageId = self.messageIdsPerEndpont[endpoint] {
                 let newMessageId = (currentMessageId % 0xFFFF) + 1
                 self.messageIdsPerEndpont[endpoint] = newMessageId
@@ -317,7 +318,8 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
     }
     
     public func sendCoAPMessage(_ message: SCMessage, toEndpoint endpoint: NWEndpoint, token: UInt64?, delegate: SCCoAPTransportLayerDelegate?) throws {
-        try operationsQueue.sync {[unowned self] in
+        try operationsQueue.sync {[weak self] in
+            guard let self = self else { throw SCCoAPTransportLayerError.sendError(errorDescription: "Instance is deallocated")}
             let connection = self.mustGetConnection(forEndpoint: endpoint)
             
             guard let data = message.toData() else { throw SCCoAPTransportLayerError.encodeError }

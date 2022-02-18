@@ -49,7 +49,7 @@ public enum SCClientErrorCode: Int {
 
 //MARK: - SC Client IMPLEMENTATION
 
-public class SCClient: NSObject {
+public class SCClient {
     
     //MARK: Constants and Properties
     
@@ -83,10 +83,9 @@ public class SCClient: NSObject {
     
     //MARK: Internal Methods (allowed to use)
     
-    public init(delegate: SCClientDelegate?, transportLayerObject: SCCoAPTransportLayerProtocol = SCCoAPUDPTransportLayer()) {
+    public init(delegate: SCClientDelegate?, transportLayerObject: SCCoAPTransportLayerProtocol) {
         self.delegate = delegate
         self.transportLayerObject = transportLayerObject
-        super.init()
     }
     
     public func sendCoAPMessage(_ message: SCMessage, endpoint: NWEndpoint) {
@@ -199,7 +198,12 @@ public class SCClient: NSObject {
             retransmissionCounter += 1
         }
         else {
-            transmissionTimer = Timer(timeInterval: SCMessage.kMaxTransmitWait - currentTransmitWait, target: self, selector: #selector(SCClient.notifyNoResponseExpected), userInfo: nil, repeats: false)
+            transmissionTimer = Timer(timeInterval: SCMessage.kMaxTransmitWait - currentTransmitWait, repeats: false, block: { [weak self] _  in
+                guard let self = self else { return }
+                self.closeTransmission()
+                self.notifyDelegateWithErrorCode(.noResponseExpectedError)
+                
+            })
         }
         // Have seen the case when the new message was attempded to be sent while the timer was invalidated (possibly from `transportLayerObject(_: didFailWithError:)`).
         // TODO: Have to check the root case of the rare crashes described above.
@@ -209,13 +213,6 @@ public class SCClient: NSObject {
             return
         }
         RunLoop.current.add(transmissionTimer, forMode: RunLoop.Mode.common)
-    }
-    
-    //Actually PRIVATE! Do not call from outside. Has to be internally visible as NSTimer won't find it otherwise
-    
-    @objc func notifyNoResponseExpected() {
-        closeTransmission()
-        notifyDelegateWithErrorCode(.noResponseExpectedError)
     }
     
     fileprivate func sendPendingMessage() {

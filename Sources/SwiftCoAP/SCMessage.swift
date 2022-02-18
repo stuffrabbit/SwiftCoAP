@@ -75,7 +75,7 @@ public struct CoAPConnection {
 
 //MARK: - SC CoAP UDP Transport Layer
 /// SC CoAP UDP Transport Layer: This class is the default transport layer handler, sending data via UDP with help of `Network.framework`. If you want to create a custom transport layer handler, you have to create a custom class and adopt the SCCoAPTransportLayerProtocol. Next you have to pass your class to the init method of SCClient: init(delegate: SCClientDelegate?, transportLayerObject: SCCoAPTransportLayerProtocol). You will than get callbacks to send CoAP data and have to inform your delegate (in this case an object of type SCClient) when you receive a response by using the callbacks from SCCoAPTransportLayerDelegate.
-public final class SCCoAPUDPTransportLayer: NSObject {
+public final class SCCoAPUDPTransportLayer {
     fileprivate let kPingInterval:TimeInterval = 5
     fileprivate var transportLayerDelegates: [MessageTransportIdentifier: MessageTransportDelegate] = [:]
     fileprivate var connections: [NWEndpoint: CoAPConnection] = [:]
@@ -84,6 +84,8 @@ public final class SCCoAPUDPTransportLayer: NSObject {
     fileprivate var networkParameters: NWParameters = .udp
 
     private let operationsQueue = DispatchQueue(label: "swiftcoap.queue.operations", qos: .default)
+    
+    public required init() { }
 
     private func setupStateUpdateHandler(for connection: NWConnection) -> NWConnection {
         let endpoint = connection.endpoint

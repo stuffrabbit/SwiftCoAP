@@ -53,7 +53,6 @@ public protocol SCCoAPTransportLayerProtocol: AnyObject {
     func getMessageId(for endpoint:NWEndpoint) -> UInt16
     func cancelMessageTransmission(to endpoint: NWEndpoint, withToken: UInt64)
     // Closes all connections to the endpoints
-    func cancelConnection(to endpoint: NWEndpoint)
     func closeAllTransmissions()
     
 }
@@ -373,7 +372,7 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
         return tlsOptions
     }
     
-    public func cancelConnection(to endpoint: NWEndpoint) {
+    private func cancelConnection(to endpoint: NWEndpoint) {
         operationsQueue.sync { [weak self] in
             guard let self = self else { return }
             if let coapConnection = self.connections[endpoint] {

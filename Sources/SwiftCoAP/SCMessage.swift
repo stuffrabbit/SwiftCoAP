@@ -77,18 +77,18 @@ public struct CoAPConnection {
 //MARK: - SC CoAP UDP Transport Layer
 /// SC CoAP UDP Transport Layer: This class is the default transport layer handler, sending data via UDP with help of `Network.framework`. If you want to create a custom transport layer handler, you have to create a custom class and adopt the SCCoAPTransportLayerProtocol. Next you have to pass your class to the init method of SCClient: init(delegate: SCClientDelegate?, transportLayerObject: SCCoAPTransportLayerProtocol). You will than get callbacks to send CoAP data and have to inform your delegate (in this case an object of type SCClient) when you receive a response by using the callbacks from SCCoAPTransportLayerDelegate.
 public final class SCCoAPUDPTransportLayer {
-    fileprivate let kPingInterval:TimeInterval = 5
-    fileprivate var transportLayerDelegates: [MessageTransportIdentifier: MessageTransportDelegate] = [:]
-    fileprivate var connections: [NWEndpoint: CoAPConnection] = [:]
-    fileprivate var messageIdsPerEndpont:[NWEndpoint:UInt16] = [:]
-    fileprivate var listener: NWListener?
-    fileprivate var networkParameters: NWParameters = .udp
+    internal let kPingInterval:TimeInterval = 5
+    internal var transportLayerDelegates: [MessageTransportIdentifier: MessageTransportDelegate] = [:]
+    internal var connections: [NWEndpoint: CoAPConnection] = [:]
+    internal var messageIdsPerEndpoint:[NWEndpoint:UInt16] = [:]
+    internal var listener: NWListener?
+    internal var networkParameters: NWParameters = .udp
 
-    private let operationsQueue = DispatchQueue(label: "swiftcoap.queue.operations", qos: .default)
+    internal let operationsQueue = DispatchQueue(label: "swiftcoap.queue.operations", qos: .default)
     
     public required init() { }
 
-    private func setupStateUpdateHandler(for connection: NWConnection) -> NWConnection {
+    internal func setupStateUpdateHandler(for connection: NWConnection) -> NWConnection {
         let endpoint = connection.endpoint
         connection.stateUpdateHandler = { [weak self] newState in
             switch newState {
@@ -106,19 +106,7 @@ public final class SCCoAPUDPTransportLayer {
             case .ready:
                 os_log("Connection to ENDPOINT %@ entered READY state", log: .default, type: .info, endpoint.debugDescription)
                 guard let self = self else { return }
-                let pingTimer = Timer(timeInterval: self.kPingInterval, repeats: true) { [weak self] timer in
-                    guard let self = self else {
-                        timer.invalidate()
-                        return
-                    }
-                    self.processPingTimer(timer: timer, endpoint: endpoint)
-                }
-                self.connections[connection.endpoint]?.pingTimer = pingTimer
-                // timer should be added to the runloop different from current one,
-                // it seems that the runloop powering state update handler prevents timers to fire
-                RunLoop.main.add(pingTimer, forMode: .default)
-                
-                self.startReads(from: connection)
+                self.handleReadyState(forEndpoint: endpoint, connection: connection)
             case .cancelled:
                 os_log("Connection to ENDPOINT %@ is CANCELLED", log: .default, type: .info, endpoint.debugDescription)
                 guard let self = self else { return }
@@ -129,8 +117,24 @@ public final class SCCoAPUDPTransportLayer {
         }
         return connection
     }
+    
+    internal func handleReadyState(forEndpoint endpoint: NWEndpoint, connection: NWConnection) {
+        let pingTimer = Timer(timeInterval: self.kPingInterval, repeats: true) { [weak self] timer in
+            guard let self = self else {
+                timer.invalidate()
+                return
+            }
+            self.processPingTimer(timer: timer, endpoint: endpoint)
+        }
+        self.connections[connection.endpoint]?.pingTimer = pingTimer
+        // timer should be added to the runloop different from current one,
+        // it seems that the runloop powering state update handler prevents timers to fire
+        RunLoop.main.add(pingTimer, forMode: .default)
+        
+        self.startReads(from: connection)
+    }
 
-    private func mustGetConnection(forEndpoint endpoint: NWEndpoint) -> NWConnection {
+    internal func mustGetConnection(forEndpoint endpoint: NWEndpoint) -> NWConnection {
         let connectionKey = endpoint
         // Reuse only connections in untroubled state
         if let coapConnection = connections[connectionKey], coapConnection.connection.state != .cancelled {
@@ -144,7 +148,7 @@ public final class SCCoAPUDPTransportLayer {
         return connection
     }
 
-    private func startReads(from connection: NWConnection) {
+    internal func startReads(from connection: NWConnection) {
         guard connection.state == .ready else {
             return
         }
@@ -161,44 +165,48 @@ public final class SCCoAPUDPTransportLayer {
             }
             if let data = data {
                 if let message = SCMessage.fromData(data) {
-                    // Send confirmation if message is confirmable
-                    let token = message.token
-                    self.updateMessageId(for: connection.endpoint, newMessageId: message.messageId)
-                    self.updateLastReceivedMessageTs(for: connection.endpoint)
-                    os_log(">>> %@",log: .default, type:.debug, "Endpoint: \(connection.endpoint.debugDescription), Message \(message.toString())")
-                    
-                    let id = MessageTransportIdentifier(token: token, endpoint: connection.endpoint)
- 
-                    // if we received confirmable message nobody was expecting, send the reset command to stop observations
-                    /*
-                     https://datatracker.ietf.org/doc/html/rfc7641#section-3.5
-                     If a client does not recognize the token in a confirmable
-                     notification, it MUST NOT acknowledge the message and SHOULD reject
-                     it with a Reset message; otherwise, the client MUST acknowledge the
-                     message as usual.  In the case of a non-confirmable notification,
-                     rejecting the message with a Reset message is OPTIONAL.
-                     */
-                    if message.type == .confirmable && self.transportLayerDelegates[id] == nil{
-                        self.sendEmptyMessageWithType(.reset, messageId: message.messageId, token: nil, toEndpoint: connection.endpoint)
-                        return
-                    }
-                    
-                    if message.type == .confirmable {
-                        self.sendEmptyMessageWithType(.acknowledgement, messageId: message.messageId, token: nil, toEndpoint: connection.endpoint)
-                    }
-                    if let delegate = self.transportLayerDelegates[id] {
-                        delegate.delegate.transportLayerObject(self, didReceiveData: data, fromEndpoint: connection.endpoint)
-                        if delegate.observation == false && message.type == .acknowledgement {
-                            self.transportLayerDelegates.removeValue(forKey: id)
-                        }
-                    }
+                    self.handleReceivedMessage(message, connection: connection, rawData: data)
                 }
             }
             self.startReads(from: connection)
         }
     }
     
-    fileprivate func sendEmptyMessageWithType(_ type: SCType, messageId: UInt16, token: UInt64?, toEndpoint endpoint: NWEndpoint) {
+    internal func handleReceivedMessage(_ message: SCMessage, connection: NWConnection, rawData: Data) {
+        // Send confirmation if message is confirmable
+        let token = message.token
+        self.updateMessageId(for: connection.endpoint, newMessageId: message.messageId)
+        self.updateLastReceivedMessageTs(for: connection.endpoint)
+        os_log(">>> %@",log: .default, type:.debug, "Endpoint: \(connection.endpoint.debugDescription), Message \(message.toString())")
+        
+        let id = MessageTransportIdentifier(token: token, endpoint: connection.endpoint)
+
+        // if we received confirmable message nobody was expecting, send the reset command to stop observations
+        /*
+         https://datatracker.ietf.org/doc/html/rfc7641#section-3.5
+         If a client does not recognize the token in a confirmable
+         notification, it MUST NOT acknowledge the message and SHOULD reject
+         it with a Reset message; otherwise, the client MUST acknowledge the
+         message as usual.  In the case of a non-confirmable notification,
+         rejecting the message with a Reset message is OPTIONAL.
+         */
+        if message.type == .confirmable && self.transportLayerDelegates[id] == nil{
+            self.sendEmptyMessageWithType(.reset, messageId: message.messageId, token: nil, toEndpoint: connection.endpoint)
+            return
+        }
+        
+        if message.type == .confirmable {
+            self.sendEmptyMessageWithType(.acknowledgement, messageId: message.messageId, token: nil, toEndpoint: connection.endpoint)
+        }
+        if let delegate = self.transportLayerDelegates[id] {
+            delegate.delegate.transportLayerObject(self, didReceiveData: rawData, fromEndpoint: connection.endpoint)
+            if delegate.observation == false && message.type == .acknowledgement {
+                self.transportLayerDelegates.removeValue(forKey: id)
+            }
+        }
+    }
+    
+    internal func sendEmptyMessageWithType(_ type: SCType, messageId: UInt16, token: UInt64?, toEndpoint endpoint: NWEndpoint) {
         let emptyMessage = SCMessage()
         emptyMessage.type = type;
         emptyMessage.messageId = messageId
@@ -206,19 +214,19 @@ public final class SCCoAPUDPTransportLayer {
         try? sendCoAPMessage(emptyMessage, toEndpoint: endpoint, token: token, delegate: nil)
     }
     
-    fileprivate func updateMessageId(for endpoint: NWEndpoint, newMessageId: UInt16) {
+    internal func updateMessageId(for endpoint: NWEndpoint, newMessageId: UInt16) {
         operationsQueue.sync { [weak self] in
-            self?.messageIdsPerEndpont[endpoint] = newMessageId
+            self?.messageIdsPerEndpoint[endpoint] = newMessageId
         }
     }
     
-    fileprivate func updateLastReceivedMessageTs(for endpoint: NWEndpoint) {
+    internal func updateLastReceivedMessageTs(for endpoint: NWEndpoint) {
         operationsQueue.sync {
             self.connections[endpoint]?.lastReceivedMessageTs = Date().timeIntervalSince1970
         }
     }
     
-    fileprivate func notifyDelegatesAboutError(for endpoint: NWEndpoint, error: Error) {
+    internal func notifyDelegatesAboutError(for endpoint: NWEndpoint, error: Error) {
         self.transportLayerDelegates.forEach { (key, value) in
             if key.endpoint == endpoint {
                 value.delegate.transportLayerObject(self, didFailWithError: error as NSError)
@@ -226,7 +234,7 @@ public final class SCCoAPUDPTransportLayer {
         }
     }
     
-    fileprivate func processPingTimer(timer: Timer, endpoint:NWEndpoint) {
+    internal func processPingTimer(timer: Timer, endpoint:NWEndpoint) {
         guard let coapConnection = self.connections[endpoint] else {
             timer.invalidate()
             return
@@ -303,18 +311,18 @@ extension SCCoAPUDPTransportLayer: SCCoAPTransportLayerProtocol {
 
 
     /// Retrieves new message id for endpoint
-    /// There could be multiple clients using the same underlying transport, so it's import to have centralized
+    /// There could be multiple clients using the same underlying transport, so it's important to have centralized
     /// message ids issuance
     public func getMessageId(for endpoint: NWEndpoint) -> UInt16 {
         operationsQueue.sync { [weak self] in
             guard let self = self else { return 0 }
-            if let currentMessageId = self.messageIdsPerEndpont[endpoint] {
+            if let currentMessageId = self.messageIdsPerEndpoint[endpoint] {
                 let newMessageId = (currentMessageId % 0xFFFF) + 1
-                self.messageIdsPerEndpont[endpoint] = newMessageId
+                self.messageIdsPerEndpoint[endpoint] = newMessageId
                 return newMessageId
             } else {
                 let newMessageId = UInt16(arc4random_uniform(0xFFFF))
-                self.messageIdsPerEndpont[endpoint] = newMessageId
+                self.messageIdsPerEndpoint[endpoint] = newMessageId
                 return newMessageId
             }
         }
@@ -964,7 +972,7 @@ public class SCMessage: NSObject {
     //MARK: Internal Methods (allowed to use)
     
     public convenience init(code: SCCodeValue, type: SCType, payload: Data?) {
-        self.init()
+        self.init()   
         self.code = code
         self.type = type
         self.payload = payload

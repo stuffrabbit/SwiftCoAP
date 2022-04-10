@@ -73,9 +73,9 @@ public class SCClient {
     
     fileprivate var transportLayerObject: SCCoAPTransportLayerProtocol
     fileprivate var transmissionTimer: Timer?
-    fileprivate var messageInTransmission: SCMessage?
+    internal var messageInTransmission: SCMessage?
     fileprivate var currentToken: UInt64 = UInt64(arc4random_uniform(0xFFFFFFFF) + 1) + (UInt64(arc4random_uniform(0xFFFFFFFF) + 1) << 32)
-    fileprivate var retransmissionCounter = 0
+    internal var retransmissionCounter = 0
     fileprivate var currentTransmitWait = 0.0
     fileprivate var recentNotificationInfo: (Date, UInt)?
     lazy fileprivate var cachedMessagePairs = [SCMessage : SCMessage]()
@@ -118,8 +118,7 @@ public class SCClient {
         
         if  httpProxyingData != nil {
             sendHttpMessageFromCoAPMessage(message)
-        }
-        else {
+        } else {
             if message.blockBody == nil, let autoB1SZX = autoBlock1SZX {
                 let fixedByteSize = pow(2, Double(autoB1SZX) + 4)
                 if let payload = message.payload {
@@ -196,13 +195,11 @@ public class SCClient {
             currentTransmitWait += timeout
             transmissionTimer = Timer(timeInterval: timeout, target: self, selector: #selector(SCClient.sendWithRentransmissionHandling), userInfo: nil, repeats: false)
             retransmissionCounter += 1
-        }
-        else {
+        } else {
             transmissionTimer = Timer(timeInterval: SCMessage.kMaxTransmitWait - currentTransmitWait, repeats: false, block: { [weak self] _  in
                 guard let self = self else { return }
                 self.closeTransmission()
                 self.notifyDelegateWithErrorCode(.noResponseExpectedError)
-                
             })
         }
         // Have seen the case when the new message was attempded to be sent while the timer was invalidated (possibly from `transportLayerObject(_: didFailWithError:)`).
